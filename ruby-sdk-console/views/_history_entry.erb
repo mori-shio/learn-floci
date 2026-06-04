@@ -1,0 +1,17 @@
+<article class="rounded-lg border <%= error ? 'border-red-300' : 'border-zinc-200' %> bg-white shadow-sm p-3">
+  <div class="flex items-center gap-2 mb-2">
+    <span class="text-xs font-semibold text-zinc-800"><%= h(label) %></span>
+    <span class="text-[10px] text-zinc-500"><%= duration_ms %>ms</span>
+    <% if error %>
+      <span class="text-[10px] uppercase tracking-wide text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">error</span>
+    <% else %>
+      <span class="text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">ok</span>
+    <% end %>
+  </div>
+  <pre class="text-[11px] text-zinc-100 bg-zinc-900 border border-zinc-800 rounded p-2 overflow-x-auto whitespace-pre mb-2"><%= h(code) %></pre>
+  <% if error %>
+    <pre class="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all"><%= h(error) %></pre>
+  <% else %>
+    <pre class="text-[11px] text-zinc-100 bg-zinc-900 border border-zinc-800 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all"><%= h(output) %></pre>
+  <% end %>
+</article>

@@ -1,0 +1,64 @@
+<%
+  initial_values = p[:fields].each_with_object({}) { |f, h| h[f[:name]] = f[:default].to_s }
+%>
+<form
+  x-show="selected==='<%= p[:id] %>'"
+  x-cloak
+  x-data='<%= h({ template: p[:code_template], values: initial_values }.to_json) %>'
+  class="rounded-lg border border-zinc-200 bg-white shadow-sm p-4 flex flex-col gap-3 h-full"
+  hx-post="/run"
+  hx-target="#history"
+  hx-swap="afterbegin"
+  hx-indicator="find .htmx-loader"
+>
+  <input type="hidden" name="_preset" value="<%= p[:id] %>" />
+
+  <div>
+    <div class="flex items-center gap-2">
+      <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200 tracking-wide uppercase"><%= p[:service] %></span>
+      <h3 class="text-base font-semibold text-zinc-900"><%= p[:label] %></h3>
+    </div>
+    <p class="text-xs text-zinc-500 mt-1 min-h-[1.25rem]"><%= p[:description] ? h(p[:description]) : "&nbsp;" %></p>
+  </div>
+
+  <% if p[:fields].any? %>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <% p[:fields].each do |f| %>
+        <% wrapper_cls = f[:type] == "textarea" ? "flex flex-col gap-1 text-xs text-zinc-600 md:col-span-2" : "flex flex-col gap-1 text-xs text-zinc-600" %>
+        <label class="<%= wrapper_cls %>">
+          <span><%= f[:label] %></span>
+          <% if f[:type] == "textarea" %>
+            <textarea
+              name="<%= f[:name] %>"
+              x-model="values.<%= f[:name] %>"
+              rows="2"
+              class="w-full rounded bg-white border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/30"
+            ><%= h(f[:default]) %></textarea>
+          <% else %>
+            <input
+              name="<%= f[:name] %>"
+              x-model="values.<%= f[:name] %>"
+              type="<%= f[:type] || "text" %>"
+              value="<%= h(f[:default]) %>"
+              class="w-full rounded bg-white border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/30"
+            />
+          <% end %>
+        </label>
+      <% end %>
+    </div>
+  <% end %>
+
+  <div class="mt-auto space-y-3">
+    <div>
+      <p class="text-[10px] uppercase tracking-wide text-zinc-500 mb-1">Ruby code preview</p>
+      <pre class="text-xs text-zinc-100 bg-zinc-900 border border-zinc-800 rounded p-2 overflow-x-auto whitespace-pre" x-text="buildPreview(template, values)"></pre>
+    </div>
+    <div class="flex items-center gap-3 justify-end">
+      <span class="htmx-loader text-xs text-zinc-500 htmx-indicator">running…</span>
+      <button
+        type="submit"
+        class="rounded bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-1.5 transition shadow-sm"
+      >Run</button>
+    </div>
+  </div>
+</form>

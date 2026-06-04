@@ -1,0 +1,15 @@
+.env
+.env.*
+
+# Floci の永続データ（bind mount 先）
+/data/
+
+# Node / Bun
+node_modules/
+bun.lockb
+
+# Playwright MCP のスクリーンショット / スナップショット
+.playwright-mcp/
+
+# macOS
+.DS_Store

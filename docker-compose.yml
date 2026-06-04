@@ -1,0 +1,70 @@
+services:
+  aws-console:
+    build: ./aws-console
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./aws-console:/app
+      - aws_console_modules:/app/node_modules
+    environment:
+      FLOCI_ENDPOINT: http://floci:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    depends_on:
+      floci:
+        condition: service_healthy
+
+  ruby-sdk-console:
+    build: ./ruby-sdk-console
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./ruby-sdk-console:/app
+      - ruby_sdk_bundle:/usr/local/bundle
+    environment:
+      FLOCI_ENDPOINT: http://floci:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    depends_on:
+      floci:
+        condition: service_healthy
+
+  floci:
+    image: floci/floci:latest
+    ports:
+      - "4566:4566"
+      - "6379-6399:6379-6399"   # ElastiCache (Redis/Valkey) proxy ports
+      - "7001-7099:7001-7099"   # RDS (PostgreSQL) proxy ports
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/floci:/app/data
+      - ./init:/etc/floci/init/start.d
+    environment:
+      FLOCI_HOSTNAME: floci
+      FLOCI_SERVICES_DOCKER_NETWORK: floci-test_default
+      FLOCI_STORAGE_MODE: hybrid
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      FLOCI_DEFAULT_REGION: us-east-1
+      FLOCI_SERVICES_RDS_PROXY_BASE_PORT: "7001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_floci/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  adminer:
+    image: adminer:latest
+    ports:
+      - "9000:8080"
+    volumes:
+      - ./adminer/login-servers.php:/var/www/html/plugins-enabled/login-servers.php:ro
+      - ./adminer/prefill.php:/var/www/html/plugins-enabled/prefill.php:ro
+    depends_on:
+      floci:
+        condition: service_healthy
+
+volumes:
+  aws_console_modules:
+  ruby_sdk_bundle:

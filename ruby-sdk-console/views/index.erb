@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Floci Ruby SDK Console</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .htmx-indicator { opacity: 0; transition: opacity 200ms; }
+    .htmx-request .htmx-indicator { opacity: 1; }
+    #history:has(article) > .empty-placeholder { display: none; }
+  </style>
+  <script>
+    function buildPreview(template, values) {
+      return template.replace(/\{(\w+)\}/g, (_m, name) => {
+        const val = values[name];
+        if (val === undefined || val === '') return '{' + name + '}';
+        return val;
+      });
+    }
+  </script>
+</head>
+<body
+  class="bg-zinc-50 text-zinc-900 min-h-screen"
+  x-data='<%= h({
+    tab: SERVICES.first,
+    selected: FIRST_OF_SERVICE[SERVICES.first],
+    firstOf: FIRST_OF_SERVICE,
+  }.to_json) %>'
+  x-init="$watch('tab', t => selected = firstOf[t])"
+>
+  <header class="border-b border-zinc-200 bg-white px-6 py-3 flex items-center gap-4">
+    <h1 class="text-base font-bold tracking-tight">
+      <span class="text-red-600">Floci</span> Ruby SDK Console
+    </h1>
+    <span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200">SDK</span>
+    <span class="text-xs text-zinc-500 font-mono"><%= h(FLOCI_ENDPOINT) %></span>
+    <span class="text-[10px] uppercase tracking-wider text-zinc-500 border border-zinc-200 rounded px-1.5 py-0.5">aws-sdk-ruby + pg</span>
+    <div class="ml-auto flex items-center gap-2">
+      <label class="flex items-center gap-1.5 text-xs text-zinc-500">
+        <span>Console:</span>
+        <select
+          onchange="window.location.href=this.value"
+          class="text-xs bg-white border border-zinc-300 hover:border-zinc-400 rounded px-2 py-1 text-zinc-700 focus:outline-none focus:border-red-500"
+        >
+          <option value="http://localhost:8000">CLI Console</option>
+          <option value="http://localhost:8001" selected>Ruby SDK Console</option>
+        </select>
+      </label>
+      <button
+        type="button"
+        @click="$dispatch('clear-history')"
+        class="text-xs text-zinc-600 hover:text-zinc-900 px-2 py-1 rounded border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
+      >Clear history</button>
+    </div>
+  </header>
+
+  <nav role="tablist" class="px-6 border-b border-zinc-200 bg-white flex gap-1 overflow-x-auto">
+    <% SERVICES.each do |s| %>
+      <button
+        type="button"
+        @click="tab='<%= s %>'"
+        :class="tab==='<%= s %>' ? 'border-red-600 text-red-700' : 'border-transparent text-zinc-500 hover:text-zinc-900'"
+        class="px-4 py-2 border-b-2 text-sm font-medium transition whitespace-nowrap"
+      ><%= s %></button>
+    <% end %>
+  </nav>
+
+  <main class="max-w-[1600px] mx-auto px-6 pt-4 grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4">
+    <aside class="self-start overflow-y-auto max-h-[420px]">
+      <% SERVICES.each do |s| %>
+        <div x-show="tab==='<%= s %>'" x-cloak class="flex flex-col">
+          <% PRESETS.select { |p| p[:service] == s }.each do |p| %>
+            <button
+              type="button"
+              @click="selected='<%= p[:id] %>'"
+              :class="selected==='<%= p[:id] %>' ? 'bg-red-50 text-red-700 border-l-2 border-red-500 font-medium' : 'border-l-2 border-transparent text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'"
+              class="w-full text-left px-3 py-1.5 text-sm rounded-r transition"
+            ><%= p[:label] %></button>
+          <% end %>
+        </div>
+      <% end %>
+    </aside>
+
+    <section class="min-h-[420px]">
+      <% PRESETS.each do |p| %>
+        <%= render_card(p) %>
+      <% end %>
+    </section>
+  </main>
+
+  <section class="max-w-[1600px] mx-auto px-6 pb-10 pt-6">
+    <div class="border-t border-zinc-200 pt-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-zinc-700">History</h2>
+        <span class="text-xs text-zinc-500">最新が上</span>
+      </div>
+      <div
+        id="history"
+        class="space-y-3"
+        @clear-history.window="$el.innerHTML = ''"
+      >
+        <p class="empty-placeholder text-xs text-zinc-500 italic">まだ実行履歴がありません。コマンドを選んで Run を押してください。</p>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "floci-aws-console",
+  "module": "server.tsx",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot server.tsx",
+    "start": "bun run server.tsx"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
