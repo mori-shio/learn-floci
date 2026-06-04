@@ -55,6 +55,29 @@ Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (
 
 ---
 
+## スクリーンショット
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <strong>aws-console (CLI)</strong><br/>
+      <sub>http://localhost:8000 — dark theme</sub><br/>
+      <img src="docs/images/cli-console.png" alt="CLI Console: EC2 タブで describe-instances を表示" />
+      <br/><sub>EC2 タブ / コマンドプレビュー</sub>
+    </td>
+    <td width="50%" align="center">
+      <strong>ruby-sdk-console (SDK)</strong><br/>
+      <sub>http://localhost:8001 — light theme</sub><br/>
+      <img src="docs/images/ruby-sdk-console.png" alt="Ruby SDK Console: S3 Put object と List buckets の実行履歴" />
+      <br/><sub>S3 タブ / Ruby コードプレビュー / 実行履歴</sub>
+    </td>
+  </tr>
+</table>
+
+サービスタブを切り替えると、左サイドバーにそのサービスのオペレーション一覧が出る。中央のカードでフィールドを編集すると、その場で **コマンド (CLI) / Ruby コード (SDK) のプレビュー** が更新される。Run すると下の History エリアに結果が積み上がる (HTMX で部分更新)。
+
+---
+
 ## Quick start
 
 ```bash
