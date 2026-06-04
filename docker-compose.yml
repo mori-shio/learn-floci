@@ -1,11 +1,11 @@
 services:
-  aws-console:
-    build: ./aws-console
+  cli-console:
+    build: ./cli-console
     ports:
       - "8000:8000"
     volumes:
-      - ./aws-console:/app
-      - aws_console_modules:/app/node_modules
+      - ./cli-console:/app
+      - cli_console_modules:/app/node_modules
     environment:
       FLOCI_ENDPOINT: http://floci:4566
       AWS_ACCESS_KEY_ID: test
@@ -66,5 +66,5 @@ services:
         condition: service_healthy
 
 volumes:
-  aws_console_modules:
+  cli_console_modules:
   ruby_sdk_bundle:

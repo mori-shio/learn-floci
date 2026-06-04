@@ -15,7 +15,7 @@ graph LR
   end
 
   subgraph compose["docker compose"]
-    AC["aws-console:8000<br/>Bun + Hono + HTMX<br/>(aws-cli)"]
+    AC["cli-console:8000<br/>Bun + Hono + HTMX<br/>(aws-cli)"]
     RC["ruby-sdk-console:8001<br/>Sinatra + HTMX<br/>(aws-sdk-ruby + pg + rubyzip + redis)"]
     AD["adminer:9000<br/>PostgreSQL GUI"]
     F["floci:4566<br/>(GraalVM native)"]
@@ -46,7 +46,7 @@ graph LR
 
 | コンテナ | URL | スタック | 役割 |
 |---|---|---|---|
-| **aws-console** | http://localhost:8000 | Bun + Hono + HTMX + Tailwind v4 | `aws-cli` を実行するブラウザダッシュボード |
+| **cli-console** | http://localhost:8000 | Bun + Hono + HTMX + Tailwind v4 | `aws-cli` を実行するブラウザダッシュボード |
 | **ruby-sdk-console** | http://localhost:8001 | Ruby 3.3 + Sinatra + HTMX + Tailwind v4 | `aws-sdk-*` / `pg` / `rubyzip` / `redis` を実行するダッシュボード |
 | **floci** | http://localhost:4566 | `floci/floci:latest` | ローカル AWS エミュレータ本体 |
 | **adminer** | http://localhost:9000 | `adminer:latest` | RDS (PostgreSQL) 確認用 GUI |
@@ -60,7 +60,7 @@ Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (
 <table>
   <tr>
     <td width="50%" align="center">
-      <strong>aws-console (CLI)</strong><br/>
+      <strong>cli-console</strong><br/>
       <sub>http://localhost:8000 — dark theme</sub><br/>
       <img src="docs/images/cli-console.png" alt="CLI Console: EC2 タブで describe-instances を表示" />
       <br/><sub>EC2 タブ / コマンドプレビュー</sub>
@@ -90,7 +90,7 @@ docker compose up --build
 - SDK Console: http://localhost:8001
 - Adminer (RDS): http://localhost:9000 (login servers は事前設定済み)
 
-ヘッダの「Console:」セレクタで両 Console を行き来できる。`init/setup-aws-resources.sh` と aws-console 起動フックで以下のデモリソースが seed される:
+ヘッダの「Console:」セレクタで両 Console を行き来できる。`init/setup-aws-resources.sh` と cli-console 起動フックで以下のデモリソースが seed される:
 
 | サービス | リソース |
 |---|---|
@@ -105,7 +105,7 @@ docker compose up --build
 | ECS | `floci-test-cluster` + Fargate task def `floci-test-task` |
 | Lambda | `floci-test-lambda` (Node.js 20.x) |
 
-> ElastiCache / Lambda は `aws-console` コンテナの起動フックで seed される。前者は SigV4 で service を判定する Query プロトコル、後者は zip 化が必要で、いずれも floci コンテナ内の素の `curl` では実行できないため。
+> ElastiCache / Lambda は `cli-console` コンテナの起動フックで seed される。前者は SigV4 で service を判定する Query プロトコル、後者は zip 化が必要で、いずれも floci コンテナ内の素の `curl` では実行できないため。
 
 ---
 
@@ -138,7 +138,7 @@ docker compose up --build
 
 ## CLI Console: テンプレート記法
 
-`aws-console/server.tsx` の Preset テンプレートは以下の記法で展開される (`{}` 内はフィールド名):
+`cli-console/server.tsx` の Preset テンプレートは以下の記法で展開される (`{}` 内はフィールド名):
 
 | 記法 | 用途 | 例 |
 |---|---|---|
@@ -181,8 +181,8 @@ docker compose up --build
 
 ```
 .
-├── docker-compose.yml          # 4 サービス (floci / aws-console / ruby-sdk-console / adminer)
-├── aws-console/                # Bun + Hono CLI Console
+├── docker-compose.yml          # 4 サービス (floci / cli-console / ruby-sdk-console / adminer)
+├── cli-console/                # Bun + Hono CLI Console
 │   ├── Dockerfile              #   aws-cli v2 + zip + redis-tools 込み
 │   ├── package.json
 │   └── server.tsx              #   PRESETS 配列 + @zip / @out トークン展開
@@ -206,7 +206,7 @@ docker compose up --build
 
 ## ホストから直接 aws-cli を叩く場合
 
-`aws-console` を経由せず手元の `aws-cli` で直接触りたいとき:
+`cli-console` を経由せず手元の `aws-cli` で直接触りたいとき:
 
 ```bash
 export AWS_ENDPOINT_URL=http://localhost:4566

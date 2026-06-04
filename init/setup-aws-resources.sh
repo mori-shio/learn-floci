@@ -39,9 +39,9 @@ RDS_RESULT=$(curl -s -X POST "${ENDPOINT}/" \
   -d "Action=CreateDBInstance&DBInstanceIdentifier=floci-test-db&DBInstanceClass=db.t3.micro&Engine=postgres&MasterUsername=postgres&MasterUserPassword=password&DBName=floci_test_dev&Version=2014-10-31" 2>&1)
 echo "${RDS_RESULT}" | grep -q "DBInstanceIdentifier" && echo "✓ RDS instance: floci-test-db (PostgreSQL)" || echo "⚠ RDS: ${RDS_RESULT}"
 
-# ElastiCache (Redis / Valkey) の seed は aws-console 側で実行
+# ElastiCache (Redis / Valkey) の seed は cli-console 側で実行
 # (Floci の Query プロトコルは SigV4 でサービスを判定するので bare curl だと SQS にルーティングされてしまう)
-echo "ℹ ElastiCache の seed は aws-console コンテナで実行されます (SigV4 ルーティング必須のため)"
+echo "ℹ ElastiCache の seed は cli-console コンテナで実行されます (SigV4 ルーティング必須のため)"
 
 # DynamoDB テーブル作成 (DynamoDB は JSON 1.0 プロトコル)
 DDB_RESULT=$(curl -s -X POST "${ENDPOINT}/" \
@@ -101,7 +101,7 @@ echo "${ECS_TD_RESULT}" | grep -q "taskDefinitionArn" && echo "✓ ECS task defi
 curl -s -X PUT "${ENDPOINT}/athena-results" > /dev/null
 echo "✓ S3 bucket: athena-results (Athena 結果出力用)"
 
-# Lambda の seed は zip が必要なので aws-console 側で実行 (server.tsx の startup hook)
-echo "ℹ Lambda seed は aws-console コンテナで実行されます (zip 必須のため)"
+# Lambda の seed は zip が必要なので cli-console 側で実行 (server.tsx の startup hook)
+echo "ℹ Lambda seed は cli-console コンテナで実行されます (zip 必須のため)"
 
 echo "=== All AWS resources created ==="

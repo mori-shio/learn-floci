@@ -1,5 +1,5 @@
 {
-  "name": "floci-aws-console",
+  "name": "floci-cli-console",
   "module": "server.tsx",
   "type": "module",
   "scripts": {

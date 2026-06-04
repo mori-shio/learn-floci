@@ -46,7 +46,7 @@ const PRESETS: Preset[] = [
     fields: [
       { name: "bucket", label: "Bucket", default: "demo-bucket" },
       { name: "key", label: "Key", default: "hello.txt" },
-      { name: "body", label: "Body (text)", type: "textarea", default: "Hello from aws-console!" },
+      { name: "body", label: "Body (text)", type: "textarea", default: "Hello from cli-console!" },
     ],
   },
   {
@@ -699,8 +699,8 @@ function expandTemplate(template: string, values: Record<string, string>): Expan
     replaced = replaced.replace(/@zip\{(\w+),([\w.]+)\}/g, (_, varname: string, filename: string) => {
       const content = values[varname] ?? "";
       const id = randomUUID();
-      const dir = `/tmp/aws-console-zip-${id}`;
-      const zipPath = `/tmp/aws-console-zip-${id}.zip`;
+      const dir = `/tmp/cli-console-zip-${id}`;
+      const zipPath = `/tmp/cli-console-zip-${id}.zip`;
       result.prepZips.push({ dir, zipPath, files: [{ name: filename, content }] });
       result.cleanupFiles.push(zipPath);
       result.cleanupDirs.push(dir);
@@ -711,7 +711,7 @@ function expandTemplate(template: string, values: Record<string, string>): Expan
     // the file content is appended to stdout (labeled). Use for `aws lambda invoke OUTFILE`.
     replaced = replaced.replace(/@out\{(\w+)\}/g, (_, varname: string) => {
       const id = randomUUID();
-      const outPath = `/tmp/aws-console-out-${id}`;
+      const outPath = `/tmp/cli-console-out-${id}`;
       result.outputs.push({ path: outPath, label: varname });
       result.cleanupFiles.push(outPath);
       return outPath;
@@ -720,7 +720,7 @@ function expandTemplate(template: string, values: Record<string, string>): Expan
     // @{name}: write field value to a temp text file and substitute the file path.
     replaced = replaced.replace(/@\{(\w+)\}/g, (_, name: string) => {
       const value = values[name] ?? "";
-      const path = `/tmp/aws-console-${randomUUID()}.txt`;
+      const path = `/tmp/cli-console-${randomUUID()}.txt`;
       result.prepFiles.push({ path, content: value });
       result.cleanupFiles.push(path);
       return path;
