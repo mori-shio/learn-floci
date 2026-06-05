@@ -1,6 +1,6 @@
 # learn-floci
 
-ローカル AWS エミュレータ [**Floci**](https://floci.io/) を **`aws-cli`** と **`aws-sdk-ruby`** の両面から触って、挙動・差分・癖を比較しながら学ぶための実験環境。
+ローカル AWS エミュレータ [**Floci**](https://floci.io/) を **`aws-cli`**・**`aws-sdk-ruby`**・**`AWS SDK v3 for JS`** の 3 面から触って、挙動・差分・癖を比較しながら学ぶための実験環境。
 
 [Floci](https://floci.io/) は GraalVM ネイティブビルドの軽量 AWS エミュレータ (MIT、51 サービス、24ms 起動 / 13MiB アイドル、`http://localhost:4566` 統一エンドポイント)。Lambda / RDS / ElastiCache / MSK / ECS / EC2 / EKS / OpenSearch 等は実 Docker コンテナで動作する。LocalStack のドロップイン互換 (同じポート 4566、認証トークン不要)。
 
@@ -17,6 +17,7 @@ graph LR
   subgraph compose["docker compose"]
     AC["cli-console:8000<br/>Bun + Hono + HTMX<br/>(aws-cli)"]
     RC["ruby-sdk-console:8001<br/>Sinatra + HTMX<br/>(aws-sdk-ruby + pg + rubyzip + redis)"]
+    JC["js-sdk-console:8002<br/>Bun + Hono + HTMX<br/>(AWS SDK v3 for JS)"]
     AD["adminer:9000<br/>PostgreSQL GUI"]
     F["floci:4566<br/>(GraalVM native)"]
   end
@@ -31,9 +32,11 @@ graph LR
 
   Browser --> AC
   Browser --> RC
+  Browser --> JC
   Browser --> AD
   AC -- "AWS API" --> F
   RC -- "AWS API" --> F
+  JC -- "AWS API" --> F
   RC -- "pg gem" --> RDS
   RC -- "redis gem" --> EC
   AD --> RDS
@@ -48,10 +51,11 @@ graph LR
 |---|---|---|---|
 | **cli-console** | http://localhost:8000 | Bun + Hono + HTMX + Tailwind v4 | `aws-cli` を実行するブラウザダッシュボード |
 | **ruby-sdk-console** | http://localhost:8001 | Ruby 3.3 + Sinatra + HTMX + Tailwind v4 | `aws-sdk-*` / `pg` / `rubyzip` / `redis` を実行するダッシュボード |
+| **js-sdk-console** | http://localhost:8002 | Bun + Hono + HTMX + Tailwind v4 | AWS SDK v3 for JS を直接呼び出すダッシュボード |
 | **floci** | http://localhost:4566 | `floci/floci:latest` | ローカル AWS エミュレータ本体 |
 | **adminer** | http://localhost:9000 | `adminer:latest` | RDS (PostgreSQL) 確認用 GUI |
 
-Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (Lambda runtime / PostgreSQL / Valkey 等) を起動する。データプレーン (Redis プロトコル、PG プロトコル) は Floci のホストの 6379-6399 / 7001-7099 ポートに proxy 経由で公開される。
+Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (Lambda runtime / PostgreSQL / Valkey 等) を起動する。データプレーン (Redis プロトコル、PG プロトコル) は Floci のホストの 6379-6399 / 7001-7099 ポートに proxy 経由で公開される。3 つの Console は同一の 12 サービスを異なるインターフェース (CLI / Ruby SDK / JS SDK) で操作でき、ヘッダのドロップダウンで相互に行き来できる。
 
 ---
 
@@ -87,10 +91,11 @@ docker compose up --build
 初回ビルドは aws-cli / Ruby gem のダウンロードで 3〜5 分。起動後:
 
 - CLI Console: http://localhost:8000
-- SDK Console: http://localhost:8001
+- Ruby SDK Console: http://localhost:8001
+- JS SDK Console: http://localhost:8002
 - Adminer (RDS): http://localhost:9000 (login servers は事前設定済み)
 
-ヘッダの「Console:」セレクタで両 Console を行き来できる。`init/setup-aws-resources.sh` と cli-console 起動フックで以下のデモリソースが seed される:
+ヘッダの「Console:」セレクタで 3 つの Console を行き来できる。`infra/init/setup-aws-resources.sh` と cli-console 起動フックで以下のデモリソースが seed される:
 
 | サービス | リソース |
 |---|---|
@@ -105,29 +110,29 @@ docker compose up --build
 | ECS | `floci-test-cluster` + Fargate task def `floci-test-task` |
 | Lambda | `floci-test-lambda` (Node.js 20.x) |
 
-> ElastiCache / Lambda は `cli-console` コンテナの起動フックで seed される。前者は SigV4 で service を判定する Query プロトコル、後者は zip 化が必要で、いずれも floci コンテナ内の素の `curl` では実行できないため。
+> ElastiCache / Lambda は cli-console コンテナの起動フックで seed される。前者は SigV4 で service を判定する Query プロトコル、後者は zip 化が必要で、いずれも floci コンテナ内の素の `curl` では実行できないため。
 
 ---
 
 ## サービス対応表
 
-両 Console で扱えるオペレーション一覧 (✓ = Preset 実装あり)。`aws-cli` / `aws-sdk-ruby` どちらも実エンドポイント (`http://floci:4566`) を叩く。
+3 つの Console で扱えるオペレーション一覧 (✓ = Preset 実装あり)。すべて実エンドポイント (`http://floci:4566`) を叩く。
 
-| Service | Operation | CLI | Ruby SDK | Floci 実装 |
-|---|---|:-:|:-:|---|
-| **S3** | list / create-bucket / put-object / get-object / head-object / delete-object / delete-bucket / list-objects | ✓ | ✓¹ | In-process |
-| **SQS** | list / create / send-message / receive-message / delete-queue | ✓ | ✓² | In-process |
-| **SNS** | list / create-topic / publish | ✓ | ✓ | In-process |
-| **Secrets Manager** | list / create / get | ✓ | ✓ | In-process |
-| **SSM Parameter Store** | put / get / list (get-by-path) / delete | ✓ | ✓² | In-process |
-| **RDS** | describe / create / delete | ✓ | ✓³ | **Real Docker** (PostgreSQL/MySQL) + proxy :7001+ |
-| **Lambda** | list / create (Node.js) / create (Python) / invoke / get / delete | ✓ | ✓ | **Real Docker** |
-| **EC2** | describe-instances / describe-images / describe-vpcs / describe-subnets / describe-security-groups / run-instances / terminate-instances | ✓ | ✓ | **Real Docker** (`RunInstances`) |
-| **ECS** (Fargate) | list-clusters / create-cluster / register-task-definition / list-task-definitions / run-task / list-tasks / describe-tasks / delete-cluster | ✓ | ✓² | **Real Docker** (タスク実行) |
-| **DynamoDB** | list / create / describe / put-item / get-item / scan / query / delete-table | ✓ | ✓² | In-process |
-| **ElastiCache** | describe-cache-clusters / describe-replication-groups / create-replication-group (Valkey/Redis) / create-cache-cluster (Memcached) / delete | ✓ | ✓⁴ | **Real Docker** (Valkey/Redis) + proxy :6379+ |
-| **Athena** | start-query-execution / list-query-executions / get-query-execution / get-query-results | ✓ | ✓ | In-process (**mock mode**: クエリは受理されるが結果は空) |
-| **Custom** | 任意の `aws ...` を直接実行 | ✓ | — | |
+| Service | Operation | CLI | Ruby SDK | JS SDK | Floci 実装 |
+|---|---|:-:|:-:|:-:|---|
+| **S3** | list / create-bucket / put-object / get-object / head-object / delete-object / delete-bucket / list-objects | ✓ | ✓¹ | ✓ | In-process |
+| **SQS** | list / create / send-message / receive-message / delete-queue | ✓ | ✓² | ✓ | In-process |
+| **SNS** | list / create-topic / publish | ✓ | ✓ | ✓ | In-process |
+| **Secrets Manager** | list / create / get | ✓ | ✓ | ✓ | In-process |
+| **SSM Parameter Store** | put / get / list (get-by-path) / delete | ✓ | ✓² | ✓ | In-process |
+| **RDS** | describe / create / delete | ✓ | ✓³ | ✓ | **Real Docker** (PostgreSQL/MySQL) + proxy :7001+ |
+| **Lambda** | list / create (Node.js) / create (Python) / invoke / get / delete | ✓ | ✓ | ✓ | **Real Docker** |
+| **EC2** | describe-instances / describe-images / describe-vpcs / describe-subnets / describe-security-groups / run-instances / terminate-instances | ✓ | ✓ | ✓ | **Real Docker** (`RunInstances`) |
+| **ECS** (Fargate) | list-clusters / create-cluster / register-task-definition / list-task-definitions / run-task / list-tasks / describe-tasks / delete-cluster | ✓ | ✓² | ✓ | **Real Docker** (タスク実行) |
+| **DynamoDB** | list / create / describe / put-item / get-item / scan / query / delete-table | ✓ | ✓² | ✓ | In-process |
+| **ElastiCache** | describe-cache-clusters / describe-replication-groups / create-replication-group (Valkey/Redis) / create-cache-cluster (Memcached) / delete | ✓ | ✓⁴ | ✓ | **Real Docker** (Valkey/Redis) + proxy :6379+ |
+| **Athena** | start-query-execution / list-query-executions / get-query-execution / get-query-results | ✓ | ✓ | ✓ | In-process (**mock mode**: クエリは受理されるが結果は空) |
+| **Custom** | 任意の `aws ...` を直接実行 | ✓ | — | — | |
 
 ¹ 全部 `aws-sdk-s3`。`path_style` を強制。
 ² 一部オペレーション省略あり (CLI 側にあり SDK 側になし、またはその逆)。
@@ -138,7 +143,7 @@ docker compose up --build
 
 ## CLI Console: テンプレート記法
 
-`cli-console/server.tsx` の Preset テンプレートは以下の記法で展開される (`{}` 内はフィールド名):
+`consoles/cli/server.tsx` の Preset テンプレートは以下の記法で展開される (`{}` 内はフィールド名):
 
 | 記法 | 用途 | 例 |
 |---|---|---|
@@ -156,6 +161,13 @@ docker compose up --build
 - **DynamoDB の item / key は素の Ruby Hash でよい**。SDK が型推論する (`{ id: "abc", value: "hello" }` でも、明示的に `{ id: { s: "abc" } }` でもよい)。CLI 側は DynamoDB JSON 形式 (`{"id":{"S":"abc"}}`) が必須なので、SDK の方が書きやすい。
 - **ECS の task definition** は textarea の JSON を `JSON.parse(..., symbolize_names: true)` で Hash 化して `register_task_definition` にそのまま渡せる。
 - **ElastiCache の Valkey/Redis 疎通テスト**は `describe_replication_groups` で `configuration_endpoint` (例: `floci:6380`) を取得して `Redis.new(host:, port:)` で接続する。Valkey 8.x は Redis プロトコル互換。
+
+## JS SDK Console: 実装メモ
+
+- **Lambda の zip 生成はメモリ上で手動構築**。外部ライブラリを使わず、uncompressed ZIP (STORE) のバイナリヘッダを手動で組み立てる `createZip(filename, data)` + `crc32(data)` ヘルパーで `Uint8Array` を生成し、`Code.ZipFile` にそのまま渡す。
+- **Lambda invoke** の `Payload` は `TextEncoder.encode()` で Uint8Array 化、レスポンスは `TextDecoder.decode()` で文字列に戻す。
+- **ECS の task definition** は textarea の JSON を `JSON.parse()` で展開して `RegisterTaskDefinitionCommand` に渡す。`RunTask` の subnet / security group はカンマ区切り文字列を split して配列化。
+- CLI / Ruby Console との全体差分: Custom タブなし (任意 CLI コマンドは SDK では不要)、ElastiCache の疎通テストなし (Redis クライアントライブラリ未搭載)。
 
 ---
 
@@ -181,32 +193,38 @@ docker compose up --build
 
 ```
 .
-├── docker-compose.yml          # 4 サービス (floci / cli-console / ruby-sdk-console / adminer)
-├── cli-console/                # Bun + Hono CLI Console
-│   ├── Dockerfile              #   aws-cli v2 + zip + redis-tools 込み
-│   ├── package.json
-│   └── server.tsx              #   PRESETS 配列 + @zip / @out トークン展開
-├── ruby-sdk-console/           # Sinatra Ruby SDK Console
-│   ├── Dockerfile              #   ruby:3.3-slim + libpq-dev
-│   ├── Gemfile                 #   aws-sdk-* / nokogiri / pg / rubyzip / redis
-│   ├── app.rb                  #   PRESETS 配列 + ERB ビュー
-│   └── views/
-│       ├── index.erb           #   レイアウト + タブナビ
-│       ├── _card.erb           #   Preset カード (フォーム + コードプレビュー)
-│       └── _history_entry.erb  #   実行履歴エントリ
-├── init/
-│   └── setup-aws-resources.sh  # floci コンテナ起動時に curl で seed
-├── adminer/                    # Adminer ログインサーバ事前設定
-│   ├── login-servers.php
-│   └── prefill.php
-└── data/floci/                 # Floci 永続データ (gitignore)
+├── docker-compose.yml              # 5 コンテナ (floci / cli / js-sdk / ruby-sdk / adminer)
+├── consoles/
+│   ├── cli/                        # Bun + Hono CLI Console (:8000)
+│   │   ├── Dockerfile              #   aws-cli v2 + zip + redis-tools 込み
+│   │   ├── package.json
+│   │   └── server.tsx              #   PRESETS 配列 + @zip / @out トークン展開
+│   ├── ruby-sdk/                   # Sinatra Ruby SDK Console (:8001)
+│   │   ├── Dockerfile              #   ruby:3.3-slim + libpq-dev
+│   │   ├── Gemfile                 #   aws-sdk-* / nokogiri / pg / rubyzip / redis
+│   │   ├── app.rb                  #   PRESETS 配列 + ERB ビュー
+│   │   └── views/
+│   │       ├── index.erb           #   レイアウト + タブナビ
+│   │       ├── _card.erb           #   Preset カード (フォーム + コードプレビュー)
+│   │       └── _history_entry.erb  #   実行履歴エントリ
+│   └── js-sdk/                     # Bun + Hono JS SDK Console (:8002)
+│       ├── Dockerfile              #   oven/bun:slim
+│       ├── package.json            #   @aws-sdk/client-* (12 サービス)
+│       └── server.tsx              #   PRESETS 配列 + SDK 直接呼び出し
+├── infra/
+│   ├── init/
+│   │   └── setup-aws-resources.sh  # floci コンテナ起動時に curl で seed
+│   └── adminer/                    # Adminer ログインサーバ事前設定
+│       ├── login-servers.php
+│       └── prefill.php
+└── data/floci/                     # Floci 永続データ (gitignore)
 ```
 
 ---
 
 ## ホストから直接 aws-cli を叩く場合
 
-`cli-console` を経由せず手元の `aws-cli` で直接触りたいとき:
+Console を経由せず手元の `aws-cli` で直接触りたいとき:
 
 ```bash
 export AWS_ENDPOINT_URL=http://localhost:4566
