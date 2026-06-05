@@ -1,13 +1,18 @@
 import { Hono } from "hono";
 import { html, raw } from "hono/html";
 
-import { S3Client, ListBucketsCommand, CreateBucketCommand, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectCommand, DeleteBucketCommand } from "@aws-sdk/client-s3";
+import { S3Client, ListBucketsCommand, CreateBucketCommand, PutObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectCommand, DeleteBucketCommand } from "@aws-sdk/client-s3";
 import { SQSClient, ListQueuesCommand, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand, DeleteQueueCommand } from "@aws-sdk/client-sqs";
 import { SNSClient, ListTopicsCommand, CreateTopicCommand, PublishCommand } from "@aws-sdk/client-sns";
-import { DynamoDBClient, ListTablesCommand, CreateTableCommand, PutItemCommand, GetItemCommand, ScanCommand, QueryCommand, DeleteTableCommand, type ScalarAttributeType } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ListTablesCommand, CreateTableCommand, DescribeTableCommand, PutItemCommand, GetItemCommand, ScanCommand, QueryCommand, DeleteTableCommand, type ScalarAttributeType } from "@aws-sdk/client-dynamodb";
 import { SecretsManagerClient, ListSecretsCommand, CreateSecretCommand, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { SSMClient, PutParameterCommand, GetParameterCommand, GetParametersByPathCommand, DeleteParameterCommand } from "@aws-sdk/client-ssm";
-import { AthenaClient, StartQueryExecutionCommand, GetQueryExecutionCommand, GetQueryResultsCommand } from "@aws-sdk/client-athena";
+import { RDSClient, DescribeDBInstancesCommand, CreateDBInstanceCommand, DeleteDBInstanceCommand } from "@aws-sdk/client-rds";
+import { LambdaClient, ListFunctionsCommand, CreateFunctionCommand, InvokeCommand, GetFunctionCommand, DeleteFunctionCommand } from "@aws-sdk/client-lambda";
+import { EC2Client, DescribeInstancesCommand, DescribeImagesCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeSecurityGroupsCommand, RunInstancesCommand, TerminateInstancesCommand } from "@aws-sdk/client-ec2";
+import { ECSClient, ListClustersCommand, CreateClusterCommand, RegisterTaskDefinitionCommand, ListTaskDefinitionsCommand, RunTaskCommand, ListTasksCommand, DescribeTasksCommand, DeleteClusterCommand } from "@aws-sdk/client-ecs";
+import { ElastiCacheClient, DescribeCacheClustersCommand, DescribeReplicationGroupsCommand, CreateReplicationGroupCommand, CreateCacheClusterCommand, DeleteReplicationGroupCommand, DeleteCacheClusterCommand } from "@aws-sdk/client-elasticache";
+import { AthenaClient, StartQueryExecutionCommand, GetQueryExecutionCommand, GetQueryResultsCommand, ListQueryExecutionsCommand } from "@aws-sdk/client-athena";
 
 // ─── Types ───
 
@@ -42,6 +47,11 @@ const sns = new SNSClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds
 const ddb = new DynamoDBClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
 const sm = new SecretsManagerClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
 const ssm = new SSMClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
+const rds = new RDSClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
+const lambda = new LambdaClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
+const ec2 = new EC2Client({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
+const ecs = new ECSClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
+const elasticache = new ElastiCacheClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
 const athena = new AthenaClient({ region, endpoint: FLOCI_ENDPOINT, credentials: creds });
 
 // ─── Presets ───
@@ -128,6 +138,22 @@ const result = await client.send(
 );
 console.log(result.Contents);`,
     runner: async (p) => s3.send(new ListObjectsV2Command({ Bucket: p.bucket })),
+  },
+  {
+    id: "s3-head-object",
+    service: "S3",
+    label: "Head Object (metadata)",
+    fields: [
+      { name: "bucket", label: "Bucket", default: "demo-bucket" },
+      { name: "key", label: "Key", default: "hello.txt" },
+    ],
+    codeTemplate: `import { S3Client, HeadObjectCommand } from "@aws-sdk/client-s3";
+
+const client = new S3Client({ region: "us-east-1" });
+const result = await client.send(
+  new HeadObjectCommand({ Bucket: "{bucket}", Key: "{key}" })
+);`,
+    runner: async (p) => s3.send(new HeadObjectCommand({ Bucket: p.bucket, Key: p.key })),
   },
   {
     id: "s3-delete-object",
@@ -280,142 +306,6 @@ const result = await client.send(
     runner: async (p) => sns.send(new PublishCommand({ TopicArn: p.arn, Message: p.message })),
   },
 
-  // ── DynamoDB ──
-  {
-    id: "dynamodb-list-tables",
-    service: "DynamoDB",
-    label: "List Tables",
-    fields: [],
-    codeTemplate: `import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
-
-const client = new DynamoDBClient({ region: "us-east-1" });
-const result = await client.send(new ListTablesCommand({}));
-console.log(result.TableNames);`,
-    runner: async () => ddb.send(new ListTablesCommand({})),
-  },
-  {
-    id: "dynamodb-create-table",
-    service: "DynamoDB",
-    label: "Create Table",
-    fields: [
-      { name: "name", label: "Table name", default: "demo-table" },
-      { name: "pk", label: "Primary key name", default: "id" },
-      { name: "pktype", label: "Primary key type (S/N/B)", default: "S" },
-    ],
-    codeTemplate: `import { DynamoDBClient, CreateTableCommand } from "@aws-sdk/client-dynamodb";
-
-const client = new DynamoDBClient({ region: "us-east-1" });
-const result = await client.send(
-  new CreateTableCommand({
-    TableName: "{name}",
-    KeySchema: [{ AttributeName: "{pk}", KeyType: "HASH" }],
-    AttributeDefinitions: [{ AttributeName: "{pk}", AttributeType: "{pktype}" }],
-    BillingMode: "PAY_PER_REQUEST",
-  })
-);`,
-    runner: async (p) =>
-      ddb.send(
-        new CreateTableCommand({
-          TableName: p.name,
-          KeySchema: [{ AttributeName: p.pk, KeyType: "HASH" }],
-          AttributeDefinitions: [{ AttributeName: p.pk, AttributeType: p.pktype as ScalarAttributeType }],
-          BillingMode: "PAY_PER_REQUEST",
-        }),
-      ),
-  },
-  {
-    id: "dynamodb-put-item",
-    service: "DynamoDB",
-    label: "Put Item",
-    fields: [
-      { name: "name", label: "Table name", default: "demo-table" },
-      { name: "item", label: "Item (JSON)", type: "textarea", default: '{"id":{"S":"item1"},"value":{"S":"hello floci"}}' },
-    ],
-    codeTemplate: `import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
-
-const client = new DynamoDBClient({ region: "us-east-1" });
-const result = await client.send(
-  new PutItemCommand({
-    TableName: "{name}",
-    Item: {item},
-  })
-);`,
-    runner: async (p) => ddb.send(new PutItemCommand({ TableName: p.name, Item: JSON.parse(p.item) })),
-  },
-  {
-    id: "dynamodb-get-item",
-    service: "DynamoDB",
-    label: "Get Item",
-    fields: [
-      { name: "name", label: "Table name", default: "demo-table" },
-      { name: "key", label: "Key (JSON)", default: '{"id":{"S":"item1"}}' },
-    ],
-    codeTemplate: `import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
-
-const client = new DynamoDBClient({ region: "us-east-1" });
-const result = await client.send(
-  new GetItemCommand({
-    TableName: "{name}",
-    Key: {key},
-  })
-);`,
-    runner: async (p) => ddb.send(new GetItemCommand({ TableName: p.name, Key: JSON.parse(p.key) })),
-  },
-  {
-    id: "dynamodb-scan",
-    service: "DynamoDB",
-    label: "Scan",
-    fields: [{ name: "name", label: "Table name", default: "demo-table" }],
-    codeTemplate: `import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
-
-const client = new DynamoDBClient({ region: "us-east-1" });
-const result = await client.send(
-  new ScanCommand({ TableName: "{name}" })
-);
-console.log(result.Items);`,
-    runner: async (p) => ddb.send(new ScanCommand({ TableName: p.name })),
-  },
-  {
-    id: "dynamodb-query",
-    service: "DynamoDB",
-    label: "Query",
-    fields: [
-      { name: "name", label: "Table name", default: "demo-table" },
-      { name: "expr", label: "Key condition expression", default: "id = :id" },
-      { name: "values", label: "Expression attribute values (JSON)", default: '{":id":{"S":"item1"}}' },
-    ],
-    codeTemplate: `import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
-
-const client = new DynamoDBClient({ region: "us-east-1" });
-const result = await client.send(
-  new QueryCommand({
-    TableName: "{name}",
-    KeyConditionExpression: "{expr}",
-    ExpressionAttributeValues: {values},
-  })
-);
-console.log(result.Items);`,
-    runner: async (p) =>
-      ddb.send(
-        new QueryCommand({
-          TableName: p.name,
-          KeyConditionExpression: p.expr,
-          ExpressionAttributeValues: JSON.parse(p.values),
-        }),
-      ),
-  },
-  {
-    id: "dynamodb-delete-table",
-    service: "DynamoDB",
-    label: "Delete Table",
-    fields: [{ name: "name", label: "Table name", default: "demo-table" }],
-    codeTemplate: `import { DynamoDBClient, DeleteTableCommand } from "@aws-sdk/client-dynamodb";
-
-const client = new DynamoDBClient({ region: "us-east-1" });
-await client.send(new DeleteTableCommand({ TableName: "{name}" }));`,
-    runner: async (p) => ddb.send(new DeleteTableCommand({ TableName: p.name })),
-  },
-
   // ── Secrets Manager ──
   {
     id: "secretsmanager-list-secrets",
@@ -530,6 +420,748 @@ await client.send(new DeleteParameterCommand({ Name: "{name}" }));`,
     runner: async (p) => ssm.send(new DeleteParameterCommand({ Name: p.name })),
   },
 
+  // ── RDS ──
+  {
+    id: "rds-describe",
+    service: "RDS",
+    label: "Describe DB Instances",
+    fields: [],
+    codeTemplate: `import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
+
+const client = new RDSClient({ region: "us-east-1" });
+const result = await client.send(new DescribeDBInstancesCommand({}));
+console.log(result.DBInstances);`,
+    runner: async () => rds.send(new DescribeDBInstancesCommand({})),
+  },
+  {
+    id: "rds-create",
+    service: "RDS",
+    label: "Create DB Instance (postgres)",
+    fields: [
+      { name: "id", label: "Instance identifier", default: "demo-db" },
+      { name: "db", label: "Initial DB name", default: "demo" },
+    ],
+    codeTemplate: `import { RDSClient, CreateDBInstanceCommand } from "@aws-sdk/client-rds";
+
+const client = new RDSClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateDBInstanceCommand({
+    DBInstanceIdentifier: "{id}",
+    DBInstanceClass: "db.t3.micro",
+    Engine: "postgres",
+    MasterUsername: "postgres",
+    MasterUserPassword: "password",
+    DBName: "{db}",
+  })
+);`,
+    runner: async (p) =>
+      rds.send(
+        new CreateDBInstanceCommand({
+          DBInstanceIdentifier: p.id,
+          DBInstanceClass: "db.t3.micro",
+          Engine: "postgres",
+          MasterUsername: "postgres",
+          MasterUserPassword: "password",
+          DBName: p.db,
+        }),
+      ),
+  },
+  {
+    id: "rds-delete",
+    service: "RDS",
+    label: "Delete DB Instance",
+    fields: [{ name: "id", label: "Instance identifier", default: "demo-db" }],
+    codeTemplate: `import { RDSClient, DeleteDBInstanceCommand } from "@aws-sdk/client-rds";
+
+const client = new RDSClient({ region: "us-east-1" });
+const result = await client.send(
+  new DeleteDBInstanceCommand({
+    DBInstanceIdentifier: "{id}",
+    SkipFinalSnapshot: true,
+  })
+);`,
+    runner: async (p) =>
+      rds.send(new DeleteDBInstanceCommand({ DBInstanceIdentifier: p.id, SkipFinalSnapshot: true })),
+  },
+
+  // ── Lambda ──
+  {
+    id: "lambda-list",
+    service: "Lambda",
+    label: "List Functions",
+    fields: [],
+    codeTemplate: `import { LambdaClient, ListFunctionsCommand } from "@aws-sdk/client-lambda";
+
+const client = new LambdaClient({ region: "us-east-1" });
+const result = await client.send(new ListFunctionsCommand({}));
+console.log(result.Functions);`,
+    runner: async () => lambda.send(new ListFunctionsCommand({})),
+  },
+  {
+    id: "lambda-create-node",
+    service: "Lambda",
+    label: "Create Function (Node.js)",
+    fields: [
+      { name: "name", label: "Function name", default: "demo-fn-node" },
+      { name: "code", label: "index.js", type: "textarea", default: 'exports.handler = async (event) => {\n  return { message: "Hello from Floci (Node)!", event };\n};\n' },
+    ],
+    codeTemplate: `import { LambdaClient, CreateFunctionCommand } from "@aws-sdk/client-lambda";
+
+const client = new LambdaClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateFunctionCommand({
+    FunctionName: "{name}",
+    Runtime: "nodejs20.x",
+    Handler: "index.handler",
+    Role: "arn:aws:iam::000000000000:role/lambda-role",
+    Code: { ZipFile: zipBuffer },
+  })
+);`,
+    runner: async (p) => {
+      const zip = createZip("index.js", new TextEncoder().encode(p.code));
+      return lambda.send(
+        new CreateFunctionCommand({
+          FunctionName: p.name,
+          Runtime: "nodejs20.x",
+          Handler: "index.handler",
+          Role: "arn:aws:iam::000000000000:role/lambda-role",
+          Code: { ZipFile: zip },
+        }),
+      );
+    },
+  },
+  {
+    id: "lambda-create-python",
+    service: "Lambda",
+    label: "Create Function (Python)",
+    fields: [
+      { name: "name", label: "Function name", default: "demo-fn-py" },
+      { name: "code", label: "lambda_function.py", type: "textarea", default: 'def lambda_handler(event, context):\n    return {"message": "Hello from Floci (Python)!", "event": event}\n' },
+    ],
+    codeTemplate: `import { LambdaClient, CreateFunctionCommand } from "@aws-sdk/client-lambda";
+
+const client = new LambdaClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateFunctionCommand({
+    FunctionName: "{name}",
+    Runtime: "python3.12",
+    Handler: "lambda_function.lambda_handler",
+    Role: "arn:aws:iam::000000000000:role/lambda-role",
+    Code: { ZipFile: zipBuffer },
+  })
+);`,
+    runner: async (p) => {
+      const zip = createZip("lambda_function.py", new TextEncoder().encode(p.code));
+      return lambda.send(
+        new CreateFunctionCommand({
+          FunctionName: p.name,
+          Runtime: "python3.12",
+          Handler: "lambda_function.lambda_handler",
+          Role: "arn:aws:iam::000000000000:role/lambda-role",
+          Code: { ZipFile: zip },
+        }),
+      );
+    },
+  },
+  {
+    id: "lambda-invoke",
+    service: "Lambda",
+    label: "Invoke Function",
+    fields: [
+      { name: "name", label: "Function name", default: "demo-fn-node" },
+      { name: "payload", label: "Payload (JSON)", default: '{"hello":"floci"}' },
+    ],
+    codeTemplate: `import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+
+const client = new LambdaClient({ region: "us-east-1" });
+const result = await client.send(
+  new InvokeCommand({
+    FunctionName: "{name}",
+    Payload: new TextEncoder().encode('{payload}'),
+  })
+);
+const response = JSON.parse(new TextDecoder().decode(result.Payload));`,
+    runner: async (p) => {
+      const result = await lambda.send(
+        new InvokeCommand({
+          FunctionName: p.name,
+          Payload: new TextEncoder().encode(p.payload),
+        }),
+      );
+      const decoded = result.Payload ? JSON.parse(new TextDecoder().decode(result.Payload)) : null;
+      return { ...result, Payload: decoded };
+    },
+  },
+  {
+    id: "lambda-get",
+    service: "Lambda",
+    label: "Get Function",
+    fields: [{ name: "name", label: "Function name", default: "demo-fn-node" }],
+    codeTemplate: `import { LambdaClient, GetFunctionCommand } from "@aws-sdk/client-lambda";
+
+const client = new LambdaClient({ region: "us-east-1" });
+const result = await client.send(
+  new GetFunctionCommand({ FunctionName: "{name}" })
+);`,
+    runner: async (p) => lambda.send(new GetFunctionCommand({ FunctionName: p.name })),
+  },
+  {
+    id: "lambda-delete",
+    service: "Lambda",
+    label: "Delete Function",
+    fields: [{ name: "name", label: "Function name", default: "demo-fn-node" }],
+    codeTemplate: `import { LambdaClient, DeleteFunctionCommand } from "@aws-sdk/client-lambda";
+
+const client = new LambdaClient({ region: "us-east-1" });
+await client.send(
+  new DeleteFunctionCommand({ FunctionName: "{name}" })
+);`,
+    runner: async (p) => lambda.send(new DeleteFunctionCommand({ FunctionName: p.name })),
+  },
+
+  // ── EC2 ──
+  {
+    id: "ec2-describe-instances",
+    service: "EC2",
+    label: "Describe Instances",
+    fields: [],
+    codeTemplate: `import { EC2Client, DescribeInstancesCommand } from "@aws-sdk/client-ec2";
+
+const client = new EC2Client({ region: "us-east-1" });
+const result = await client.send(new DescribeInstancesCommand({}));
+console.log(result.Reservations);`,
+    runner: async () => ec2.send(new DescribeInstancesCommand({})),
+  },
+  {
+    id: "ec2-describe-images",
+    service: "EC2",
+    label: "Describe Images (AMIs)",
+    fields: [],
+    codeTemplate: `import { EC2Client, DescribeImagesCommand } from "@aws-sdk/client-ec2";
+
+const client = new EC2Client({ region: "us-east-1" });
+const result = await client.send(new DescribeImagesCommand({}));
+console.log(result.Images);`,
+    runner: async () => ec2.send(new DescribeImagesCommand({})),
+  },
+  {
+    id: "ec2-describe-vpcs",
+    service: "EC2",
+    label: "Describe VPCs",
+    fields: [],
+    codeTemplate: `import { EC2Client, DescribeVpcsCommand } from "@aws-sdk/client-ec2";
+
+const client = new EC2Client({ region: "us-east-1" });
+const result = await client.send(new DescribeVpcsCommand({}));
+console.log(result.Vpcs);`,
+    runner: async () => ec2.send(new DescribeVpcsCommand({})),
+  },
+  {
+    id: "ec2-describe-subnets",
+    service: "EC2",
+    label: "Describe Subnets",
+    fields: [],
+    codeTemplate: `import { EC2Client, DescribeSubnetsCommand } from "@aws-sdk/client-ec2";
+
+const client = new EC2Client({ region: "us-east-1" });
+const result = await client.send(new DescribeSubnetsCommand({}));
+console.log(result.Subnets);`,
+    runner: async () => ec2.send(new DescribeSubnetsCommand({})),
+  },
+  {
+    id: "ec2-describe-sg",
+    service: "EC2",
+    label: "Describe Security Groups",
+    fields: [],
+    codeTemplate: `import { EC2Client, DescribeSecurityGroupsCommand } from "@aws-sdk/client-ec2";
+
+const client = new EC2Client({ region: "us-east-1" });
+const result = await client.send(new DescribeSecurityGroupsCommand({}));
+console.log(result.SecurityGroups);`,
+    runner: async () => ec2.send(new DescribeSecurityGroupsCommand({})),
+  },
+  {
+    id: "ec2-run-instances",
+    service: "EC2",
+    label: "Run Instances",
+    fields: [
+      { name: "ami", label: "AMI ID", default: "ami-0abcdef1234567891" },
+      { name: "type", label: "Instance type", default: "t3.micro" },
+      { name: "count", label: "Count", default: "1", type: "number" },
+    ],
+    codeTemplate: `import { EC2Client, RunInstancesCommand } from "@aws-sdk/client-ec2";
+
+const client = new EC2Client({ region: "us-east-1" });
+const result = await client.send(
+  new RunInstancesCommand({
+    ImageId: "{ami}",
+    InstanceType: "{type}",
+    MinCount: {count},
+    MaxCount: {count},
+  })
+);`,
+    runner: async (p) =>
+      ec2.send(
+        new RunInstancesCommand({
+          ImageId: p.ami,
+          InstanceType: p.type,
+          MinCount: parseInt(p.count),
+          MaxCount: parseInt(p.count),
+        }),
+      ),
+  },
+  {
+    id: "ec2-terminate-instances",
+    service: "EC2",
+    label: "Terminate Instances",
+    fields: [{ name: "id", label: "Instance ID", default: "i-xxxxxxxxxxxxxxxxx" }],
+    codeTemplate: `import { EC2Client, TerminateInstancesCommand } from "@aws-sdk/client-ec2";
+
+const client = new EC2Client({ region: "us-east-1" });
+const result = await client.send(
+  new TerminateInstancesCommand({ InstanceIds: ["{id}"] })
+);`,
+    runner: async (p) => ec2.send(new TerminateInstancesCommand({ InstanceIds: [p.id] })),
+  },
+
+  // ── ECS ──
+  {
+    id: "ecs-list-clusters",
+    service: "ECS",
+    label: "List Clusters",
+    fields: [],
+    codeTemplate: `import { ECSClient, ListClustersCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(new ListClustersCommand({}));
+console.log(result.clusterArns);`,
+    runner: async () => ecs.send(new ListClustersCommand({})),
+  },
+  {
+    id: "ecs-create-cluster",
+    service: "ECS",
+    label: "Create Cluster",
+    fields: [{ name: "name", label: "Cluster name", default: "demo-cluster" }],
+    codeTemplate: `import { ECSClient, CreateClusterCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateClusterCommand({ clusterName: "{name}" })
+);`,
+    runner: async (p) => ecs.send(new CreateClusterCommand({ clusterName: p.name })),
+  },
+  {
+    id: "ecs-register-task-def",
+    service: "ECS",
+    label: "Register Task Def (Fargate)",
+    fields: [
+      {
+        name: "def",
+        label: "Task definition JSON",
+        type: "textarea",
+        default: '{\n  "family": "demo-task",\n  "networkMode": "awsvpc",\n  "requiresCompatibilities": ["FARGATE"],\n  "cpu": "256",\n  "memory": "512",\n  "containerDefinitions": [\n    {\n      "name": "app",\n      "image": "public.ecr.aws/nginx/nginx:alpine",\n      "essential": true,\n      "portMappings": [{"containerPort": 80, "protocol": "tcp"}]\n    }\n  ]\n}',
+      },
+    ],
+    codeTemplate: `import { ECSClient, RegisterTaskDefinitionCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(
+  new RegisterTaskDefinitionCommand({def})
+);`,
+    runner: async (p) => ecs.send(new RegisterTaskDefinitionCommand(JSON.parse(p.def))),
+  },
+  {
+    id: "ecs-list-task-defs",
+    service: "ECS",
+    label: "List Task Definitions",
+    fields: [],
+    codeTemplate: `import { ECSClient, ListTaskDefinitionsCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(new ListTaskDefinitionsCommand({}));
+console.log(result.taskDefinitionArns);`,
+    runner: async () => ecs.send(new ListTaskDefinitionsCommand({})),
+  },
+  {
+    id: "ecs-run-task",
+    service: "ECS",
+    label: "Run Task (Fargate)",
+    fields: [
+      { name: "cluster", label: "Cluster name", default: "demo-cluster" },
+      { name: "taskdef", label: "Task definition", default: "demo-task" },
+      { name: "subnets", label: "Subnet IDs (comma-separated)", default: "subnet-xxx" },
+      { name: "sgs", label: "Security group IDs (comma-separated)", default: "sg-xxx" },
+    ],
+    codeTemplate: `import { ECSClient, RunTaskCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(
+  new RunTaskCommand({
+    cluster: "{cluster}",
+    taskDefinition: "{taskdef}",
+    launchType: "FARGATE",
+    networkConfiguration: {
+      awsvpcConfiguration: {
+        subnets: ["{subnets}"],
+        securityGroups: ["{sgs}"],
+        assignPublicIp: "ENABLED",
+      },
+    },
+  })
+);`,
+    runner: async (p) =>
+      ecs.send(
+        new RunTaskCommand({
+          cluster: p.cluster,
+          taskDefinition: p.taskdef,
+          launchType: "FARGATE",
+          networkConfiguration: {
+            awsvpcConfiguration: {
+              subnets: p.subnets.split(",").map((s: string) => s.trim()),
+              securityGroups: p.sgs.split(",").map((s: string) => s.trim()),
+              assignPublicIp: "ENABLED",
+            },
+          },
+        }),
+      ),
+  },
+  {
+    id: "ecs-list-tasks",
+    service: "ECS",
+    label: "List Tasks",
+    fields: [{ name: "cluster", label: "Cluster name", default: "demo-cluster" }],
+    codeTemplate: `import { ECSClient, ListTasksCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(
+  new ListTasksCommand({ cluster: "{cluster}" })
+);
+console.log(result.taskArns);`,
+    runner: async (p) => ecs.send(new ListTasksCommand({ cluster: p.cluster })),
+  },
+  {
+    id: "ecs-describe-tasks",
+    service: "ECS",
+    label: "Describe Tasks",
+    fields: [
+      { name: "cluster", label: "Cluster name", default: "demo-cluster" },
+      { name: "arn", label: "Task ARN", default: "" },
+    ],
+    codeTemplate: `import { ECSClient, DescribeTasksCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(
+  new DescribeTasksCommand({
+    cluster: "{cluster}",
+    tasks: ["{arn}"],
+  })
+);`,
+    runner: async (p) => ecs.send(new DescribeTasksCommand({ cluster: p.cluster, tasks: [p.arn] })),
+  },
+  {
+    id: "ecs-delete-cluster",
+    service: "ECS",
+    label: "Delete Cluster",
+    fields: [{ name: "name", label: "Cluster name", default: "demo-cluster" }],
+    codeTemplate: `import { ECSClient, DeleteClusterCommand } from "@aws-sdk/client-ecs";
+
+const client = new ECSClient({ region: "us-east-1" });
+const result = await client.send(
+  new DeleteClusterCommand({ cluster: "{name}" })
+);`,
+    runner: async (p) => ecs.send(new DeleteClusterCommand({ cluster: p.name })),
+  },
+
+  // ── DynamoDB ──
+  {
+    id: "dynamodb-list-tables",
+    service: "DynamoDB",
+    label: "List Tables",
+    fields: [],
+    codeTemplate: `import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+const result = await client.send(new ListTablesCommand({}));
+console.log(result.TableNames);`,
+    runner: async () => ddb.send(new ListTablesCommand({})),
+  },
+  {
+    id: "dynamodb-create-table",
+    service: "DynamoDB",
+    label: "Create Table",
+    fields: [
+      { name: "name", label: "Table name", default: "demo-table" },
+      { name: "pk", label: "Primary key name", default: "id" },
+      { name: "pktype", label: "Primary key type (S/N/B)", default: "S" },
+    ],
+    codeTemplate: `import { DynamoDBClient, CreateTableCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateTableCommand({
+    TableName: "{name}",
+    KeySchema: [{ AttributeName: "{pk}", KeyType: "HASH" }],
+    AttributeDefinitions: [{ AttributeName: "{pk}", AttributeType: "{pktype}" }],
+    BillingMode: "PAY_PER_REQUEST",
+  })
+);`,
+    runner: async (p) =>
+      ddb.send(
+        new CreateTableCommand({
+          TableName: p.name,
+          KeySchema: [{ AttributeName: p.pk, KeyType: "HASH" }],
+          AttributeDefinitions: [{ AttributeName: p.pk, AttributeType: p.pktype as ScalarAttributeType }],
+          BillingMode: "PAY_PER_REQUEST",
+        }),
+      ),
+  },
+  {
+    id: "dynamodb-describe-table",
+    service: "DynamoDB",
+    label: "Describe Table",
+    fields: [{ name: "name", label: "Table name", default: "demo-table" }],
+    codeTemplate: `import { DynamoDBClient, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+const result = await client.send(
+  new DescribeTableCommand({ TableName: "{name}" })
+);
+console.log(result.Table);`,
+    runner: async (p) => ddb.send(new DescribeTableCommand({ TableName: p.name })),
+  },
+  {
+    id: "dynamodb-put-item",
+    service: "DynamoDB",
+    label: "Put Item",
+    fields: [
+      { name: "name", label: "Table name", default: "demo-table" },
+      { name: "item", label: "Item (JSON)", type: "textarea", default: '{"id":{"S":"item1"},"value":{"S":"hello floci"}}' },
+    ],
+    codeTemplate: `import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+const result = await client.send(
+  new PutItemCommand({
+    TableName: "{name}",
+    Item: {item},
+  })
+);`,
+    runner: async (p) => ddb.send(new PutItemCommand({ TableName: p.name, Item: JSON.parse(p.item) })),
+  },
+  {
+    id: "dynamodb-get-item",
+    service: "DynamoDB",
+    label: "Get Item",
+    fields: [
+      { name: "name", label: "Table name", default: "demo-table" },
+      { name: "key", label: "Key (JSON)", default: '{"id":{"S":"item1"}}' },
+    ],
+    codeTemplate: `import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+const result = await client.send(
+  new GetItemCommand({
+    TableName: "{name}",
+    Key: {key},
+  })
+);`,
+    runner: async (p) => ddb.send(new GetItemCommand({ TableName: p.name, Key: JSON.parse(p.key) })),
+  },
+  {
+    id: "dynamodb-scan",
+    service: "DynamoDB",
+    label: "Scan",
+    fields: [{ name: "name", label: "Table name", default: "demo-table" }],
+    codeTemplate: `import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+const result = await client.send(
+  new ScanCommand({ TableName: "{name}" })
+);
+console.log(result.Items);`,
+    runner: async (p) => ddb.send(new ScanCommand({ TableName: p.name })),
+  },
+  {
+    id: "dynamodb-query",
+    service: "DynamoDB",
+    label: "Query",
+    fields: [
+      { name: "name", label: "Table name", default: "demo-table" },
+      { name: "expr", label: "Key condition expression", default: "id = :id" },
+      { name: "values", label: "Expression attribute values (JSON)", default: '{":id":{"S":"item1"}}' },
+    ],
+    codeTemplate: `import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+const result = await client.send(
+  new QueryCommand({
+    TableName: "{name}",
+    KeyConditionExpression: "{expr}",
+    ExpressionAttributeValues: {values},
+  })
+);
+console.log(result.Items);`,
+    runner: async (p) =>
+      ddb.send(
+        new QueryCommand({
+          TableName: p.name,
+          KeyConditionExpression: p.expr,
+          ExpressionAttributeValues: JSON.parse(p.values),
+        }),
+      ),
+  },
+  {
+    id: "dynamodb-delete-table",
+    service: "DynamoDB",
+    label: "Delete Table",
+    fields: [{ name: "name", label: "Table name", default: "demo-table" }],
+    codeTemplate: `import { DynamoDBClient, DeleteTableCommand } from "@aws-sdk/client-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+await client.send(new DeleteTableCommand({ TableName: "{name}" }));`,
+    runner: async (p) => ddb.send(new DeleteTableCommand({ TableName: p.name })),
+  },
+
+  // ── ElastiCache ──
+  {
+    id: "ec-describe",
+    service: "ElastiCache",
+    label: "Describe Cache Clusters",
+    fields: [],
+    codeTemplate: `import { ElastiCacheClient, DescribeCacheClustersCommand } from "@aws-sdk/client-elasticache";
+
+const client = new ElastiCacheClient({ region: "us-east-1" });
+const result = await client.send(new DescribeCacheClustersCommand({}));
+console.log(result.CacheClusters);`,
+    runner: async () => elasticache.send(new DescribeCacheClustersCommand({})),
+  },
+  {
+    id: "ec-describe-rg",
+    service: "ElastiCache",
+    label: "Describe Replication Groups",
+    fields: [],
+    codeTemplate: `import { ElastiCacheClient, DescribeReplicationGroupsCommand } from "@aws-sdk/client-elasticache";
+
+const client = new ElastiCacheClient({ region: "us-east-1" });
+const result = await client.send(new DescribeReplicationGroupsCommand({}));
+console.log(result.ReplicationGroups);`,
+    runner: async () => elasticache.send(new DescribeReplicationGroupsCommand({})),
+  },
+  {
+    id: "ec-create-valkey-rg",
+    service: "ElastiCache",
+    label: "Create Replication Group (Valkey)",
+    fields: [
+      { name: "id", label: "Replication group ID", default: "demo-valkey" },
+      { name: "desc", label: "Description", default: "Demo Valkey replication group" },
+    ],
+    codeTemplate: `import { ElastiCacheClient, CreateReplicationGroupCommand } from "@aws-sdk/client-elasticache";
+
+const client = new ElastiCacheClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateReplicationGroupCommand({
+    ReplicationGroupId: "{id}",
+    ReplicationGroupDescription: "{desc}",
+    Engine: "valkey",
+    NumCacheClusters: 1,
+    CacheNodeType: "cache.t3.micro",
+  })
+);`,
+    runner: async (p) =>
+      elasticache.send(
+        new CreateReplicationGroupCommand({
+          ReplicationGroupId: p.id,
+          ReplicationGroupDescription: p.desc,
+          Engine: "valkey",
+          NumCacheClusters: 1,
+          CacheNodeType: "cache.t3.micro",
+        }),
+      ),
+  },
+  {
+    id: "ec-create-redis-rg",
+    service: "ElastiCache",
+    label: "Create Replication Group (Redis)",
+    fields: [
+      { name: "id", label: "Replication group ID", default: "demo-redis" },
+      { name: "desc", label: "Description", default: "Demo Redis replication group" },
+    ],
+    codeTemplate: `import { ElastiCacheClient, CreateReplicationGroupCommand } from "@aws-sdk/client-elasticache";
+
+const client = new ElastiCacheClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateReplicationGroupCommand({
+    ReplicationGroupId: "{id}",
+    ReplicationGroupDescription: "{desc}",
+    Engine: "redis",
+    NumCacheClusters: 1,
+    CacheNodeType: "cache.t3.micro",
+  })
+);`,
+    runner: async (p) =>
+      elasticache.send(
+        new CreateReplicationGroupCommand({
+          ReplicationGroupId: p.id,
+          ReplicationGroupDescription: p.desc,
+          Engine: "redis",
+          NumCacheClusters: 1,
+          CacheNodeType: "cache.t3.micro",
+        }),
+      ),
+  },
+  {
+    id: "ec-create-memcached",
+    service: "ElastiCache",
+    label: "Create Cache Cluster (Memcached)",
+    fields: [{ name: "id", label: "Cluster ID", default: "demo-memcached" }],
+    codeTemplate: `import { ElastiCacheClient, CreateCacheClusterCommand } from "@aws-sdk/client-elasticache";
+
+const client = new ElastiCacheClient({ region: "us-east-1" });
+const result = await client.send(
+  new CreateCacheClusterCommand({
+    CacheClusterId: "{id}",
+    Engine: "memcached",
+    NumCacheNodes: 1,
+    CacheNodeType: "cache.t3.micro",
+  })
+);`,
+    runner: async (p) =>
+      elasticache.send(
+        new CreateCacheClusterCommand({
+          CacheClusterId: p.id,
+          Engine: "memcached",
+          NumCacheNodes: 1,
+          CacheNodeType: "cache.t3.micro",
+        }),
+      ),
+  },
+  {
+    id: "ec-delete-rg",
+    service: "ElastiCache",
+    label: "Delete Replication Group",
+    fields: [{ name: "id", label: "Replication group ID", default: "demo-valkey" }],
+    codeTemplate: `import { ElastiCacheClient, DeleteReplicationGroupCommand } from "@aws-sdk/client-elasticache";
+
+const client = new ElastiCacheClient({ region: "us-east-1" });
+const result = await client.send(
+  new DeleteReplicationGroupCommand({ ReplicationGroupId: "{id}" })
+);`,
+    runner: async (p) => elasticache.send(new DeleteReplicationGroupCommand({ ReplicationGroupId: p.id })),
+  },
+  {
+    id: "ec-delete",
+    service: "ElastiCache",
+    label: "Delete Cache Cluster",
+    fields: [{ name: "id", label: "Cluster ID", default: "demo-memcached" }],
+    codeTemplate: `import { ElastiCacheClient, DeleteCacheClusterCommand } from "@aws-sdk/client-elasticache";
+
+const client = new ElastiCacheClient({ region: "us-east-1" });
+const result = await client.send(
+  new DeleteCacheClusterCommand({ CacheClusterId: "{id}" })
+);`,
+    runner: async (p) => elasticache.send(new DeleteCacheClusterCommand({ CacheClusterId: p.id })),
+  },
+
   // ── Athena ──
   {
     id: "athena-start-query-execution",
@@ -563,6 +1195,18 @@ console.log(result.QueryExecutionId);`,
           QueryExecutionContext: { Database: p.database },
         }),
       ),
+  },
+  {
+    id: "athena-list-query-executions",
+    service: "Athena",
+    label: "List Query Executions",
+    fields: [],
+    codeTemplate: `import { AthenaClient, ListQueryExecutionsCommand } from "@aws-sdk/client-athena";
+
+const client = new AthenaClient({ region: "us-east-1" });
+const result = await client.send(new ListQueryExecutionsCommand({}));
+console.log(result.QueryExecutionIds);`,
+    runner: async () => athena.send(new ListQueryExecutionsCommand({})),
   },
   {
     id: "athena-get-query-execution",
@@ -607,6 +1251,70 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function createZip(filename: string, data: Uint8Array): Uint8Array {
+  const enc = new TextEncoder();
+  const fname = enc.encode(filename);
+  const crc = crc32(data);
+  const now = new Date();
+  const time = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff;
+  const date = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff;
+
+  const localHeader = new Uint8Array(30 + fname.length);
+  const lv = new DataView(localHeader.buffer);
+  lv.setUint32(0, 0x04034b50, true);
+  lv.setUint16(4, 20, true);
+  lv.setUint16(8, 0, true);
+  lv.setUint16(10, time, true);
+  lv.setUint16(12, date, true);
+  lv.setUint32(14, crc, true);
+  lv.setUint32(18, data.length, true);
+  lv.setUint32(22, data.length, true);
+  lv.setUint16(26, fname.length, true);
+  localHeader.set(fname, 30);
+
+  const centralDir = new Uint8Array(46 + fname.length);
+  const cv = new DataView(centralDir.buffer);
+  cv.setUint32(0, 0x02014b50, true);
+  cv.setUint16(4, 20, true);
+  cv.setUint16(6, 20, true);
+  cv.setUint16(12, 0, true);
+  cv.setUint16(14, time, true);
+  cv.setUint16(16, date, true);
+  cv.setUint32(20, crc, true);
+  cv.setUint32(24, data.length, true);
+  cv.setUint32(28, data.length, true);
+  cv.setUint16(32, fname.length, true);
+  cv.setUint32(42, 0, true);
+  centralDir.set(fname, 46);
+
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  const cdOffset = localHeader.length + data.length;
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, 1, true);
+  ev.setUint16(10, 1, true);
+  ev.setUint32(12, centralDir.length, true);
+  ev.setUint32(16, cdOffset, true);
+
+  const result = new Uint8Array(cdOffset + centralDir.length + eocd.length);
+  result.set(localHeader, 0);
+  result.set(data, localHeader.length);
+  result.set(centralDir, cdOffset);
+  result.set(eocd, cdOffset + centralDir.length);
+  return result;
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function cleanResult(obj: unknown): unknown {
