@@ -1,13 +1,87 @@
 import type { HandleFn } from "./types";
-import { get, getAll, put, del } from "../store";
-import { xmlResponse } from "../response";
+import { getAll, put, del } from "../store";
+import { xmlResponse, jsonResponse } from "../response";
+
+function extractAction(request: Request): { action: string; isJson: boolean } {
+  const target = request.headers.get("x-amz-target") || "";
+  if (target.startsWith("AmazonSNS.")) {
+    return { action: target.replace("AmazonSNS.", ""), isJson: true };
+  }
+  return { action: "", isJson: false };
+}
 
 export const handle: HandleFn = async (request, _url) => {
-  const body = await request.text();
-  const params = new URLSearchParams(body);
-  const action = params.get("Action");
+  const { action: targetAction, isJson } = extractAction(request);
+  const bodyText = await request.text();
 
-  // CreateTopic
+  if (isJson) {
+    return handleJson(targetAction, bodyText);
+  }
+
+  const params = new URLSearchParams(bodyText);
+  const action = params.get("Action") || "";
+  return handleQuery(action, params);
+};
+
+async function handleJson(action: string, bodyText: string): Promise<Response> {
+  const body = JSON.parse(bodyText || "{}");
+
+  if (action === "CreateTopic") {
+    const topicName = body.Name;
+    const arn = `arn:aws:sns:us-east-1:000000000000:${topicName}`;
+    await put("sns-topics", arn, { name: topicName, arn });
+    return jsonResponse({ TopicArn: arn });
+  }
+
+  if (action === "ListTopics") {
+    const topics = await getAll("sns-topics");
+    return jsonResponse({
+      Topics: topics.map((t) => ({ TopicArn: t.arn })),
+    });
+  }
+
+  if (action === "Subscribe") {
+    const subscriptionArn = `${body.TopicArn}:${crypto.randomUUID()}`;
+    await put("sns-subscriptions", subscriptionArn, {
+      arn: subscriptionArn,
+      topicArn: body.TopicArn,
+      protocol: body.Protocol,
+      endpoint: body.Endpoint,
+    });
+    return jsonResponse({ SubscriptionArn: subscriptionArn });
+  }
+
+  if (action === "Publish") {
+    return jsonResponse({ MessageId: crypto.randomUUID() });
+  }
+
+  if (action === "ListSubscriptions") {
+    const subscriptions = await getAll("sns-subscriptions");
+    return jsonResponse({
+      Subscriptions: subscriptions.map((s) => ({
+        SubscriptionArn: s.arn,
+        TopicArn: s.topicArn,
+        Protocol: s.protocol,
+        Endpoint: s.endpoint,
+      })),
+    });
+  }
+
+  if (action === "DeleteTopic") {
+    await del("sns-topics", body.TopicArn);
+    const allSubs = await getAll("sns-subscriptions");
+    for (const sub of allSubs.filter((s) => s.topicArn === body.TopicArn)) {
+      await del("sns-subscriptions", sub.arn);
+    }
+    return jsonResponse({});
+  }
+
+  return new Response(JSON.stringify({ error: `Unknown SNS action: ${action}` }), {
+    status: 400, headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function handleQuery(action: string, params: URLSearchParams): Promise<Response> {
   if (action === "CreateTopic") {
     const topicName = params.get("Name")!;
     const arn = `arn:aws:sns:us-east-1:000000000000:${topicName}`;
@@ -17,7 +91,6 @@ export const handle: HandleFn = async (request, _url) => {
     );
   }
 
-  // ListTopics
   if (action === "ListTopics") {
     const topics = await getAll("sns-topics");
     const topicsXml = topics
@@ -28,60 +101,5 @@ export const handle: HandleFn = async (request, _url) => {
     );
   }
 
-  // Subscribe
-  if (action === "Subscribe") {
-    const topicArn = params.get("TopicArn")!;
-    const protocol = params.get("Protocol")!;
-    const endpoint = params.get("Endpoint")!;
-    const subscriptionArn = `${topicArn}:${crypto.randomUUID()}`;
-
-    await put("sns-subscriptions", subscriptionArn, {
-      arn: subscriptionArn,
-      topicArn,
-      protocol,
-      endpoint,
-    });
-
-    return xmlResponse(
-      `<SubscribeResponse><SubscribeResult><SubscriptionArn>${subscriptionArn}</SubscriptionArn></SubscribeResult></SubscribeResponse>`
-    );
-  }
-
-  // Publish
-  if (action === "Publish") {
-    const messageId = crypto.randomUUID();
-    return xmlResponse(
-      `<PublishResponse><PublishResult><MessageId>${messageId}</MessageId></PublishResult></PublishResponse>`
-    );
-  }
-
-  // ListSubscriptions
-  if (action === "ListSubscriptions") {
-    const subscriptions = await getAll("sns-subscriptions");
-    const subsXml = subscriptions
-      .map(
-        (s) =>
-          `<member><SubscriptionArn>${s.arn}</SubscriptionArn><TopicArn>${s.topicArn}</TopicArn><Protocol>${s.protocol}</Protocol><Endpoint>${s.endpoint}</Endpoint></member>`
-      )
-      .join("");
-    return xmlResponse(
-      `<ListSubscriptionsResponse><ListSubscriptionsResult><Subscriptions>${subsXml}</Subscriptions></ListSubscriptionsResult></ListSubscriptionsResponse>`
-    );
-  }
-
-  // DeleteTopic
-  if (action === "DeleteTopic") {
-    const topicArn = params.get("TopicArn")!;
-    await del("sns-topics", topicArn);
-    // Also delete all subscriptions for this topic
-    const allSubs = await getAll("sns-subscriptions");
-    for (const sub of allSubs.filter((s) => s.topicArn === topicArn)) {
-      await del("sns-subscriptions", sub.arn);
-    }
-    return xmlResponse(
-      `<DeleteTopicResponse><DeleteTopicResult/></DeleteTopicResponse>`
-    );
-  }
-
   return new Response("Unknown Action", { status: 400 });
-};
+}

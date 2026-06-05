@@ -1,38 +1,131 @@
 import type { HandleFn } from "./types";
 import { get, getAll, put, del } from "../store";
-import { xmlResponse } from "../response";
+import { xmlResponse, jsonResponse } from "../response";
 
-async function md5(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
+async function md5hex(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
+function extractAction(request: Request): { action: string; isJson: boolean } {
+  const target = request.headers.get("x-amz-target") || "";
+  if (target.startsWith("AmazonSQS.")) {
+    return { action: target.replace("AmazonSQS.", ""), isJson: true };
+  }
+  return { action: "", isJson: false };
 }
 
 export const handle: HandleFn = async (request, _url) => {
-  const body = await request.text();
-  const params = new URLSearchParams(body);
-  const action = params.get("Action");
+  const { action: targetAction, isJson } = extractAction(request);
+  const bodyText = await request.text();
 
-  // CreateQueue
+  if (isJson) {
+    return handleJson(targetAction, bodyText);
+  }
+
+  const params = new URLSearchParams(bodyText);
+  const action = params.get("Action") || "";
+  return handleQuery(action, params);
+};
+
+async function handleJson(action: string, bodyText: string): Promise<Response> {
+  const body = JSON.parse(bodyText || "{}");
+
+  if (action === "CreateQueue") {
+    const queueName = body.QueueName;
+    const url = `/mock-api/000000000000/${queueName}`;
+    const arn = `arn:aws:sqs:us-east-1:000000000000:${queueName}`;
+    await put("sqs-queues", queueName, {
+      name: queueName, url, arn, attributes: {},
+      createdTimestamp: String(Date.now()),
+    });
+    return jsonResponse({ QueueUrl: url });
+  }
+
+  if (action === "ListQueues") {
+    const queues = await getAll("sqs-queues");
+    return jsonResponse({ QueueUrls: queues.map((q) => q.url) });
+  }
+
+  if (action === "GetQueueUrl") {
+    const queue = await get("sqs-queues", body.QueueName);
+    if (!queue) {
+      return jsonResponse(
+        { __type: "AWS.SimpleQueueService.NonExistentQueue", message: "Queue does not exist" },
+        400
+      );
+    }
+    return jsonResponse({ QueueUrl: queue.url });
+  }
+
+  if (action === "SendMessage") {
+    const messageId = crypto.randomUUID();
+    const receiptHandle = crypto.randomUUID();
+    const md5OfBody = await md5hex(body.MessageBody || "");
+    await put("sqs-messages", messageId, {
+      queueUrl: body.QueueUrl, messageId, body: body.MessageBody,
+      receiptHandle, md5OfBody, sentTimestamp: String(Date.now()),
+    });
+    return jsonResponse({ MessageId: messageId, MD5OfMessageBody: md5OfBody });
+  }
+
+  if (action === "ReceiveMessage") {
+    const maxMessages = body.MaxNumberOfMessages || 1;
+    const allMessages = await getAll("sqs-messages");
+    const messages = allMessages
+      .filter((m) => m.queueUrl === body.QueueUrl)
+      .slice(0, maxMessages);
+    return jsonResponse({
+      Messages: messages.map((m) => ({
+        MessageId: m.messageId,
+        ReceiptHandle: m.receiptHandle,
+        MD5OfBody: m.md5OfBody,
+        Body: m.body,
+      })),
+    });
+  }
+
+  if (action === "DeleteMessage") {
+    const allMessages = await getAll("sqs-messages");
+    const message = allMessages.find((m) => m.receiptHandle === body.ReceiptHandle);
+    if (message) await del("sqs-messages", message.messageId);
+    return jsonResponse({});
+  }
+
+  if (action === "DeleteQueue") {
+    const allQueues = await getAll("sqs-queues");
+    const queue = allQueues.find((q) => q.url === body.QueueUrl);
+    if (queue) {
+      await del("sqs-queues", queue.name);
+      const allMessages = await getAll("sqs-messages");
+      for (const msg of allMessages.filter((m) => m.queueUrl === body.QueueUrl)) {
+        await del("sqs-messages", msg.messageId);
+      }
+    }
+    return jsonResponse({});
+  }
+
+  return new Response(JSON.stringify({ error: `Unknown SQS action: ${action}` }), {
+    status: 400, headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function handleQuery(action: string, params: URLSearchParams): Promise<Response> {
   if (action === "CreateQueue") {
     const queueName = params.get("QueueName")!;
     const url = `/mock-api/000000000000/${queueName}`;
     const arn = `arn:aws:sqs:us-east-1:000000000000:${queueName}`;
     await put("sqs-queues", queueName, {
-      name: queueName,
-      url,
-      arn,
-      attributes: {},
-      createdTimestamp: Date.now().toString(),
+      name: queueName, url, arn, attributes: {},
+      createdTimestamp: String(Date.now()),
     });
     return xmlResponse(
       `<CreateQueueResponse><CreateQueueResult><QueueUrl>${url}</QueueUrl></CreateQueueResult></CreateQueueResponse>`
     );
   }
 
-  // ListQueues
   if (action === "ListQueues") {
     const queues = await getAll("sqs-queues");
     const queueUrls = queues.map((q) => `<QueueUrl>${q.url}</QueueUrl>`).join("");
@@ -41,92 +134,5 @@ export const handle: HandleFn = async (request, _url) => {
     );
   }
 
-  // GetQueueUrl
-  if (action === "GetQueueUrl") {
-    const queueName = params.get("QueueName")!;
-    const queue = await get("sqs-queues", queueName);
-    if (!queue) {
-      return xmlResponse(
-        `<ErrorResponse><Error><Code>AWS.SimpleQueueService.NonExistentQueue</Code><Message>Queue does not exist</Message></Error></ErrorResponse>`,
-        400
-      );
-    }
-    return xmlResponse(
-      `<GetQueueUrlResponse><GetQueueUrlResult><QueueUrl>${queue.url}</QueueUrl></GetQueueUrlResult></GetQueueUrlResponse>`
-    );
-  }
-
-  // SendMessage
-  if (action === "SendMessage") {
-    const queueUrl = params.get("QueueUrl")!;
-    const messageBody = params.get("MessageBody")!;
-    const messageId = crypto.randomUUID();
-    const receiptHandle = crypto.randomUUID();
-    const md5OfBody = await md5(messageBody);
-
-    await put("sqs-messages", messageId, {
-      queueUrl,
-      messageId,
-      body: messageBody,
-      receiptHandle,
-      md5OfBody,
-      sentTimestamp: Date.now().toString(),
-    });
-
-    return xmlResponse(
-      `<SendMessageResponse><SendMessageResult><MessageId>${messageId}</MessageId><MD5OfMessageBody>${md5OfBody}</MD5OfMessageBody></SendMessageResult></SendMessageResponse>`
-    );
-  }
-
-  // ReceiveMessage
-  if (action === "ReceiveMessage") {
-    const queueUrl = params.get("QueueUrl")!;
-    const maxMessages = parseInt(params.get("MaxNumberOfMessages") || "1", 10);
-    const allMessages = await getAll("sqs-messages");
-    const messages = allMessages.filter((m) => m.queueUrl === queueUrl).slice(0, maxMessages);
-
-    const messagesXml = messages
-      .map(
-        (m) =>
-          `<Message><MessageId>${m.messageId}</MessageId><ReceiptHandle>${m.receiptHandle}</ReceiptHandle><MD5OfBody>${m.md5OfBody}</MD5OfBody><Body>${m.body}</Body></Message>`
-      )
-      .join("");
-
-    return xmlResponse(
-      `<ReceiveMessageResponse><ReceiveMessageResult>${messagesXml}</ReceiveMessageResult></ReceiveMessageResponse>`
-    );
-  }
-
-  // DeleteMessage
-  if (action === "DeleteMessage") {
-    const receiptHandle = params.get("ReceiptHandle")!;
-    const allMessages = await getAll("sqs-messages");
-    const message = allMessages.find((m) => m.receiptHandle === receiptHandle);
-    if (message) {
-      await del("sqs-messages", message.messageId);
-    }
-    return xmlResponse(
-      `<DeleteMessageResponse><DeleteMessageResult/></DeleteMessageResponse>`
-    );
-  }
-
-  // DeleteQueue
-  if (action === "DeleteQueue") {
-    const queueUrl = params.get("QueueUrl")!;
-    const allQueues = await getAll("sqs-queues");
-    const queue = allQueues.find((q) => q.url === queueUrl);
-    if (queue) {
-      await del("sqs-queues", queue.name);
-      // Also delete all messages for this queue
-      const allMessages = await getAll("sqs-messages");
-      for (const msg of allMessages.filter((m) => m.queueUrl === queueUrl)) {
-        await del("sqs-messages", msg.messageId);
-      }
-    }
-    return xmlResponse(
-      `<DeleteQueueResponse><DeleteQueueResult/></DeleteQueueResponse>`
-    );
-  }
-
   return new Response("Unknown Action", { status: 400 });
-};
+}

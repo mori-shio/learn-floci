@@ -19,6 +19,8 @@ function detectService(request: Request, url: URL): string | null {
   if (target.startsWith("secretsmanager")) return "secretsmanager";
   if (target.startsWith("AmazonSSM")) return "ssm";
   if (target.startsWith("AmazonAthena")) return "athena";
+  if (target.startsWith("AmazonSQS")) return "sqs";
+  if (target.startsWith("AmazonSNS")) return "sns";
 
   const authHeader = request.headers.get("authorization") || "";
   const serviceMatch = authHeader.match(/Credential=[^/]+\/[^/]+\/[^/]+\/(\w+)\//);
