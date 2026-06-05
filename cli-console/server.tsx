@@ -1089,6 +1089,7 @@ function renderPage() {
           >
             <option value="http://localhost:8000" selected>CLI Console</option>
             <option value="http://localhost:8001">Ruby SDK Console</option>
+            <option value="http://localhost:8002">JS SDK Console</option>
           </select>
         </label>
         <button

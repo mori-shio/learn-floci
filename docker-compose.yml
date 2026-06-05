@@ -15,6 +15,23 @@ services:
       floci:
         condition: service_healthy
 
+  js-sdk-console:
+    build: ./js-sdk-console
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./js-sdk-console:/app
+      - js_sdk_console_modules:/app/node_modules
+    environment:
+      FLOCI_ENDPOINT: http://floci:4566
+      PORT: "8002"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    depends_on:
+      floci:
+        condition: service_healthy
+
   ruby-sdk-console:
     build: ./ruby-sdk-console
     ports:
@@ -67,4 +84,5 @@ services:
 
 volumes:
   cli_console_modules:
+  js_sdk_console_modules:
   ruby_sdk_bundle:
