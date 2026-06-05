@@ -11,6 +11,9 @@ bun.lockb
 # Playwright MCP のスクリーンショット / スナップショット
 .playwright-mcp/
 
+# tmp (ローカルメモ等)
+/tmp/
+
 # Terraform
 infra/terraform/.terraform/
 infra/terraform/*.tfstate*
