@@ -1,55 +1,55 @@
 export function createLayout(): {
+  tabsContainer: HTMLElement;
   sidebar: HTMLElement;
-  codePanel: HTMLElement;
-  resultPanel: HTMLElement;
-  runButton: HTMLButtonElement;
+  cardArea: HTMLElement;
+  historyContainer: HTMLElement;
   resetButton: HTMLButtonElement;
-  paramsPanel: HTMLElement;
 } {
   const app = document.getElementById("app")!;
-  app.innerHTML = "";
-
   app.innerHTML = `
-    <div class="flex flex-col h-screen">
-      <header class="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
-        <h1 class="text-lg font-bold text-white">Floci Browser Console</h1>
-        <button id="reset-btn" class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded text-gray-300">Reset</button>
-      </header>
-      <div class="flex flex-1 overflow-hidden">
-        <aside id="sidebar" class="w-64 overflow-y-auto border-r border-gray-800 bg-gray-900"></aside>
-        <main class="flex-1 flex flex-col overflow-hidden">
-          <div id="params-panel" class="border-b border-gray-800 p-4 bg-gray-900 hidden"></div>
-          <div class="flex-1 flex flex-col overflow-hidden">
-            <div class="flex-1 overflow-auto border-b border-gray-800 p-4">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs text-gray-500 uppercase tracking-wide">Code Preview</span>
-              </div>
-              <pre id="code-panel" class="text-sm font-mono text-gray-300 whitespace-pre-wrap"></pre>
-            </div>
-            <div class="p-3 border-b border-gray-800 bg-gray-900">
-              <button id="run-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50" disabled>&#9654; 実行</button>
-            </div>
-            <div class="flex-1 overflow-auto p-4">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs text-gray-500 uppercase tracking-wide">Result</span>
-              </div>
-              <pre id="result-panel" class="text-sm font-mono text-gray-400 whitespace-pre-wrap"></pre>
-            </div>
-          </div>
-        </main>
+    <header class="border-b border-zinc-700 px-6 py-3 flex items-center gap-4">
+      <h1 class="text-base font-bold">
+        <span class="text-zinc-300">Floci</span> Browser Console
+      </h1>
+      <span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-sky-500/20 text-sky-300">JS SDK</span>
+      <span class="text-xs text-zinc-500 font-mono">Mock API (Service Worker)</span>
+      <div class="ml-auto">
+        <button
+          id="reset-btn"
+          class="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded border border-zinc-700 hover:border-zinc-600"
+        >Reset</button>
       </div>
-      <footer class="px-4 py-2 bg-gray-900 border-t border-gray-800 text-xs text-gray-600">
-        &#9888; Lambda, RDS, ElastiCache, EC2, ECS はブラウザ版では利用できません (Docker コンテナが必要なため)
-      </footer>
-    </div>
+    </header>
+
+    <nav id="tabs" role="tablist" class="px-6 border-b border-zinc-700 flex gap-1 overflow-x-auto"></nav>
+
+    <main class="max-w-[1600px] mx-auto px-6 pt-4 grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4">
+      <aside id="sidebar" class="self-start overflow-y-auto max-h-[340px] lg:max-h-[360px]"></aside>
+      <section id="card-area" class="min-h-[360px]"></section>
+    </main>
+
+    <section class="max-w-[1600px] mx-auto px-6 pb-6 pt-6">
+      <div class="border-t border-zinc-700 pt-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-zinc-300">History</h2>
+          <span class="text-xs text-zinc-600">最新が上</span>
+        </div>
+        <div id="history" class="space-y-3">
+          <p class="empty-placeholder text-xs text-zinc-600 italic">まだ実行履歴がありません。コマンドを選んで Run を押してください。</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="border-t border-zinc-700 px-6 py-2 text-xs text-zinc-600">
+      &#9888; Lambda, RDS, ElastiCache, EC2, ECS はブラウザ版では利用できません (Docker コンテナが必要なため)
+    </footer>
   `;
 
   return {
+    tabsContainer: document.getElementById("tabs")!,
     sidebar: document.getElementById("sidebar")!,
-    codePanel: document.getElementById("code-panel")!,
-    resultPanel: document.getElementById("result-panel")!,
-    runButton: document.getElementById("run-btn") as HTMLButtonElement,
+    cardArea: document.getElementById("card-area")!,
+    historyContainer: document.getElementById("history")!,
     resetButton: document.getElementById("reset-btn") as HTMLButtonElement,
-    paramsPanel: document.getElementById("params-panel")!,
   };
 }
