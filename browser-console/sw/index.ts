@@ -1,14 +1,21 @@
-// Service Worker entry point
-// Will be implemented in Task 3
+import { seedInitialData } from "./seed";
+import { routeRequest } from "./router";
+
+declare const self: ServiceWorkerGlobalScope;
 
 self.addEventListener("install", (event) => {
-  console.log("[SW] Installing...");
+  event.waitUntil(
+    seedInitialData().then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  console.log("[SW] Activating...");
+  event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener("fetch", (event) => {
-  // Passthrough for now
+  const url = new URL(event.request.url);
+  if (url.pathname.startsWith("/mock-api")) {
+    event.respondWith(routeRequest(event.request));
+  }
 });
