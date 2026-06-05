@@ -1045,6 +1045,8 @@ function renderPage() {
     <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <style>
+      body { opacity: 0; }
+      body.ready { opacity: 1; transition: opacity 80ms; }
       [x-cloak] { display: none !important; }
       .htmx-indicator { opacity: 0; transition: opacity 200ms; }
       .htmx-request .htmx-indicator { opacity: 1; }
@@ -1173,6 +1175,7 @@ function renderPage() {
         </div>
       </div>
     </section>
+    <script>requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.add('ready')))</script>
   </body>
 </html>`;
 }
