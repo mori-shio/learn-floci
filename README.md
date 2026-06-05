@@ -18,13 +18,13 @@ graph LR
     AC["cli-console:8000<br/>Bun + Hono + HTMX<br/>(aws-cli)"]
     RC["ruby-sdk-console:8001<br/>Sinatra + HTMX<br/>(aws-sdk-ruby + pg + rubyzip + redis)"]
     JC["js-sdk-console:8002<br/>Bun + Hono + HTMX<br/>(AWS SDK v3 for JS)"]
-    AD["adminer:9000<br/>PostgreSQL GUI"]
+    AD["adminer:9000<br/>MySQL GUI"]
     F["floci:4566<br/>(GraalVM native)"]
   end
 
   subgraph dind["Floci が起動する実コンテナ群 (DinD)"]
     Lambda["Lambda runtime<br/>(node20 / py3.12)"]
-    RDS["PostgreSQL<br/>(:7001+ proxy)"]
+    RDS["MySQL<br/>(:7001+ proxy)"]
     EC["Valkey / Redis<br/>(:6379+ proxy)"]
     EC2["EC2 instances"]
     ECS["ECS tasks (Fargate)"]
@@ -53,9 +53,9 @@ graph LR
 | **ruby-sdk-console** | http://localhost:8001 | Ruby 3.3 + Sinatra + HTMX + Tailwind v4 | `aws-sdk-*` / `pg` / `rubyzip` / `redis` を実行するダッシュボード |
 | **js-sdk-console** | http://localhost:8002 | Bun + Hono + HTMX + Tailwind v4 | AWS SDK v3 for JS を直接呼び出すダッシュボード |
 | **floci** | http://localhost:4566 | `floci/floci:latest` | ローカル AWS エミュレータ本体 |
-| **adminer** | http://localhost:9000 | `adminer:latest` | RDS (PostgreSQL) 確認用 GUI |
+| **adminer** | http://localhost:9000 | `adminer:latest` | RDS (MySQL) 確認用 GUI |
 
-Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (Lambda runtime / PostgreSQL / Valkey 等) を起動する。データプレーン (Redis プロトコル、PG プロトコル) は Floci のホストの 6379-6399 / 7001-7099 ポートに proxy 経由で公開される。3 つの Console は同一の 12 サービスを異なるインターフェース (CLI / Ruby SDK / JS SDK) で操作でき、ヘッダのドロップダウンで相互に行き来できる。
+Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (Lambda runtime / MySQL / Valkey 等) を起動する。データプレーン (Redis プロトコル、MySQL プロトコル) は Floci のホストの 6379-6399 / 7001-7099 ポートに proxy 経由で公開される。3 つの Console は同一の 12 サービスを異なるインターフェース (CLI / Ruby SDK / JS SDK) で操作でき、ヘッダのドロップダウンで相互に行き来できる。
 
 ---
 
@@ -74,6 +74,14 @@ Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (
       <sub>http://localhost:8001 — light theme</sub><br/>
       <img src="docs/images/ruby-sdk-console.png" alt="Ruby SDK Console: S3 Put object と List buckets の実行履歴" />
       <br/><sub>S3 タブ / Ruby コードプレビュー / 実行履歴</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <strong>js-sdk-console</strong><br/>
+      <sub>http://localhost:8002 — dark theme</sub><br/>
+      <img src="docs/images/js-sdk-console.png" alt="JS SDK Console: DynamoDB List Tables の実行結果" />
+      <br/><sub>DynamoDB タブ / JS コードプレビュー / 実行履歴</sub>
     </td>
   </tr>
 </table>
@@ -95,7 +103,20 @@ docker compose up --build
 - JS SDK Console: http://localhost:8002
 - Adminer (RDS): http://localhost:9000 (login servers は事前設定済み)
 
-ヘッダの「Console:」セレクタで 3 つの Console を行き来できる。`infra/init/setup-aws-resources.sh` と cli-console 起動フックで以下のデモリソースが seed される:
+ヘッダの「Console:」セレクタで 3 つの Console を行き来できる。
+
+### リソース作成 (Terraform)
+
+`docker compose up` 後に Terraform でデモリソースを作成する:
+
+```bash
+cd infra/terraform
+terraform init
+terraform plan      # 作成されるリソースを確認
+terraform apply     # リソース作成 (確認プロンプトで yes)
+```
+
+作成されるリソース:
 
 | サービス | リソース |
 |---|---|
@@ -104,13 +125,22 @@ docker compose up --build
 | SNS | `floci-test-topic` |
 | Secrets Manager | `floci-test/rails-secret` |
 | SSM | `/floci-test/app/environment` |
-| RDS | `floci-test-db` (PostgreSQL) |
+| RDS | `floci-test-db` (MySQL) |
 | ElastiCache | `floci-test-cache` (Redis RG) / `floci-test-valkey` (Valkey RG) |
 | DynamoDB | `floci-test-items` (1 件サンプル投入済み) |
+| EC2 | `floci-test-instance` (Amazon Linux 2 / t2.micro) |
 | ECS | `floci-test-cluster` + Fargate task def `floci-test-task` |
 | Lambda | `floci-test-lambda` (Node.js 20.x) |
 
-> ElastiCache / Lambda は cli-console コンテナの起動フックで seed される。前者は SigV4 で service を判定する Query プロトコル、後者は zip 化が必要で、いずれも floci コンテナ内の素の `curl` では実行できないため。
+### サンプルデータ投入 (任意)
+
+Terraform で作成したリソースにサンプルデータを投入する:
+
+```bash
+bash infra/seed/seed-sample-data.sh
+```
+
+S3 オブジェクト・SQS メッセージ・SNS publish・RDS サンプルテーブルなど、Terraform では管理しないデータプレーン操作を実行する。
 
 ---
 
@@ -125,7 +155,7 @@ docker compose up --build
 | **SNS** | list / create-topic / publish | ✓ | ✓ | ✓ | In-process |
 | **Secrets Manager** | list / create / get | ✓ | ✓ | ✓ | In-process |
 | **SSM Parameter Store** | put / get / list (get-by-path) / delete | ✓ | ✓² | ✓ | In-process |
-| **RDS** | describe / create / delete | ✓ | ✓³ | ✓ | **Real Docker** (PostgreSQL/MySQL) + proxy :7001+ |
+| **RDS** | describe / create / delete | ✓ | ✓³ | ✓ | **Real Docker** (MySQL) + proxy :7001+ |
 | **Lambda** | list / create (Node.js) / create (Python) / invoke / get / delete | ✓ | ✓ | ✓ | **Real Docker** |
 | **EC2** | describe-instances / describe-images / describe-vpcs / describe-subnets / describe-security-groups / run-instances / terminate-instances | ✓ | ✓ | ✓ | **Real Docker** (`RunInstances`) |
 | **ECS** (Fargate) | list-clusters / create-cluster / register-task-definition / list-task-definitions / run-task / list-tasks / describe-tasks / delete-cluster | ✓ | ✓² | ✓ | **Real Docker** (タスク実行) |
@@ -138,36 +168,6 @@ docker compose up --build
 ² 一部オペレーション省略あり (CLI 側にあり SDK 側になし、またはその逆)。
 ³ aws-sdk-rds の XML パーサが Floci の `<Subnets><member>...` スキーマと一部非互換なため、`describe-db-instances` は `Net::HTTP + Nokogiri` で生 XML をパースしている。他のオペレーションと `pg` 接続は SDK のまま。
 ⁴ Ruby 側には **`describe_replication_groups` → 取得した endpoint へ `redis` gem で接続 → PING / SET / GET / INFO** という疎通テスト Preset (`ec-ping-valkey`) もある。Valkey 8.x は Redis 互換プロトコルなので `redis` gem でそのまま喋れる。
-
----
-
-## CLI Console: テンプレート記法
-
-`consoles/cli/server.tsx` の Preset テンプレートは以下の記法で展開される (`{}` 内はフィールド名):
-
-| 記法 | 用途 | 例 |
-|---|---|---|
-| `{name}` | フォーム値で置換 (部分置換も可) | `s3 cp s3://{bucket}/{key} -` |
-| `@{name}` | フォーム値を一時テキストファイルに書き出して、そのファイルパスに展開 | `ecs register-task-definition --cli-input-json file://@{def}` |
-| `@zip{name,filename}` | フォーム値を `filename` というファイル名で一時ディレクトリに書き出し → `zip` 化 → zip パスに展開 | `lambda create-function ... --zip-file fileb://@zip{code,index.js}` |
-| `@out{name}` | 一時出力パスに展開 → コマンド実行後にそのファイル内容を stdout 末尾に表示 | `lambda invoke ... @out{response}` |
-
-実行は `aws --endpoint-url ${FLOCI_ENDPOINT} <展開後のトークン群>` を `Bun.spawn` で起動する。
-
-## Ruby SDK Console: 実装メモ
-
-- **Lambda の zip 生成は `rubyzip` でメモリ上で完結**。`Zip::OutputStream.write_buffer { ... }` で組み立てたバイナリ String をそのまま `code: { zip_file: bytes }` に渡す。一時ファイル経由しない。
-- **Lambda invoke の戻り値**は `resp.payload.read` で IO 取得 → `JSON.parse`。CLI 側のように出力ファイルを介す必要がない。
-- **DynamoDB の item / key は素の Ruby Hash でよい**。SDK が型推論する (`{ id: "abc", value: "hello" }` でも、明示的に `{ id: { s: "abc" } }` でもよい)。CLI 側は DynamoDB JSON 形式 (`{"id":{"S":"abc"}}`) が必須なので、SDK の方が書きやすい。
-- **ECS の task definition** は textarea の JSON を `JSON.parse(..., symbolize_names: true)` で Hash 化して `register_task_definition` にそのまま渡せる。
-- **ElastiCache の Valkey/Redis 疎通テスト**は `describe_replication_groups` で `configuration_endpoint` (例: `floci:6380`) を取得して `Redis.new(host:, port:)` で接続する。Valkey 8.x は Redis プロトコル互換。
-
-## JS SDK Console: 実装メモ
-
-- **Lambda の zip 生成はメモリ上で手動構築**。外部ライブラリを使わず、uncompressed ZIP (STORE) のバイナリヘッダを手動で組み立てる `createZip(filename, data)` + `crc32(data)` ヘルパーで `Uint8Array` を生成し、`Code.ZipFile` にそのまま渡す。
-- **Lambda invoke** の `Payload` は `TextEncoder.encode()` で Uint8Array 化、レスポンスは `TextDecoder.decode()` で文字列に戻す。
-- **ECS の task definition** は textarea の JSON を `JSON.parse()` で展開して `RegisterTaskDefinitionCommand` に渡す。`RunTask` の subnet / security group はカンマ区切り文字列を split して配列化。
-- CLI / Ruby Console との全体差分: Custom タブなし (任意 CLI コマンドは SDK では不要)、ElastiCache の疎通テストなし (Redis クライアントライブラリ未搭載)。
 
 ---
 
@@ -212,8 +212,14 @@ docker compose up --build
 │       ├── package.json            #   @aws-sdk/client-* (12 サービス)
 │       └── server.tsx              #   PRESETS 配列 + SDK 直接呼び出し
 ├── infra/
-│   ├── init/
-│   │   └── setup-aws-resources.sh  # floci コンテナ起動時に curl で seed
+│   ├── terraform/                  # Terraform でデモリソースを宣言的に管理
+│   │   ├── terraform.tf            #   required_providers
+│   │   ├── provider.tf             #   AWS provider (Floci endpoint)
+│   │   ├── main.tf                 #   全リソース定義
+│   │   └── lambda/
+│   │       └── index.js            #   Lambda 関数コード
+│   ├── seed/
+│   │   └── seed-sample-data.sh     # サンプルデータ投入 (S3 object, SQS msg 等)
 │   └── adminer/                    # Adminer ログインサーバ事前設定
 │       ├── login-servers.php
 │       └── prefill.php
@@ -243,8 +249,10 @@ aws elasticache describe-replication-groups
 ## クリーンアップ
 
 ```bash
-docker compose down -v   # ボリュームも削除
-rm -rf data/floci         # 永続データもリセットしたい場合
+cd infra/terraform && terraform destroy   # Terraform リソース削除
+cd ../..
+docker compose down -v                    # ボリュームも削除
+rm -rf data/floci                         # 永続データもリセットしたい場合
 ```
 
 ---

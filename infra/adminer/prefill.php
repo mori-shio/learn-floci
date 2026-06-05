@@ -33,7 +33,7 @@ class AdminerPrefill extends \Adminer\Plugin {
 
 return new AdminerPrefill([
     'server'   => 'floci:7001',
-    'username' => 'postgres',
+    'username' => 'admin',
     'password' => 'password',
     'db'       => 'floci_test_dev',
 ]);

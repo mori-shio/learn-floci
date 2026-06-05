@@ -11,5 +11,10 @@ bun.lockb
 # Playwright MCP のスクリーンショット / スナップショット
 .playwright-mcp/
 
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/lambda/*.zip
+
 # macOS
 .DS_Store
