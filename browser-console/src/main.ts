@@ -1,6 +1,7 @@
 import { registerServiceWorker } from "./sw-register";
 import { createLayout } from "./ui/layout";
 import { renderSidebar } from "./ui/sidebar";
+import { renderCode } from "./ui/code-preview";
 import type { Preset } from "./types";
 
 let currentPreset: Preset | null = null;
@@ -19,7 +20,7 @@ async function init() {
       currentParams[f.name] = f.default || "";
     }
     renderParams(paramsPanel, preset, codePanel);
-    codePanel.textContent = preset.code(currentParams);
+    renderCode(codePanel, preset.code(currentParams));
     resultPanel.textContent = "";
     runButton.disabled = false;
   });
@@ -76,7 +77,7 @@ function renderParams(
 
     input.addEventListener("input", () => {
       currentParams[field.name] = input.value;
-      codePanel.textContent = currentPreset!.code(currentParams);
+      renderCode(codePanel, currentPreset!.code(currentParams));
     });
 
     wrapper.appendChild(label);
