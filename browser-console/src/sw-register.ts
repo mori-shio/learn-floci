@@ -3,8 +3,9 @@ export async function registerServiceWorker(): Promise<void> {
     console.error("Service Worker not supported");
     return;
   }
-  const reg = await navigator.serviceWorker.register("/sw.js", {
-    scope: "/",
+  const base = import.meta.env.BASE_URL;
+  const reg = await navigator.serviceWorker.register(`${base}sw.js`, {
+    scope: base,
   });
   if (reg.installing) {
     await new Promise<void>((resolve) => {
