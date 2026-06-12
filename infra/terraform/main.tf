@@ -1,11 +1,13 @@
 # ─── S3 ───
 
 resource "aws_s3_bucket" "test" {
-  bucket = "floci-test-bucket"
+  bucket        = "floci-test-bucket"
+  force_destroy = true # seed / ハンズオンで投入したオブジェクトを destroy 時にまとめて削除
 }
 
 resource "aws_s3_bucket" "athena_results" {
-  bucket = "athena-results"
+  bucket        = "athena-results"
+  force_destroy = true
 }
 
 # ─── SQS ───

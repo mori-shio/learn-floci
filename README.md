@@ -78,6 +78,8 @@ Floci は `/var/run/docker.sock` をマウントして DinD で実コンテナ (
 
 ## Quick start
 
+ハンズオン形式の手順書は **[docs/hands-on.md](docs/hands-on.md)** を参照してください。
+
 ```bash
 docker compose up --build
 ```
@@ -234,11 +236,13 @@ aws elasticache describe-replication-groups
 
 ## クリーンアップ
 
+Floci 起動中に Terraform リソースを先に削除する（S3 バケットは `force_destroy = true` で中身ごと削除）:
+
 ```bash
-cd infra/terraform && terraform destroy   # Terraform リソース削除
+cd infra/terraform && terraform destroy
 cd ../..
-docker compose down -v                    # ボリュームも削除
-rm -rf data/floci                         # 永続データもリセットしたい場合
+docker compose down -v
+rm -rf data/floci   # 永続データもリセットしたい場合
 ```
 
 ---

@@ -8,8 +8,9 @@
 node_modules/
 bun.lockb
 
-# Playwright MCP のスクリーンショット / スナップショット
+# Playwright のスクリーンショット / スナップショット
 .playwright-mcp/
+.playwright-cli/
 
 # tmp (ローカルメモ等)
 /tmp/
